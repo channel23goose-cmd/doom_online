@@ -50,7 +50,8 @@ async function initDB() {
     `);
     console.log('[БД] Таблица users готова.');
   } catch (err) {
-    console.error('[БД] Ошибка инициализации:', err.message);
+    console.error('[БД] Ошибка инициализации:');
+    console.error(err);
     process.exit(1);
   }
 }
