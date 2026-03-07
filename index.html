@@ -400,6 +400,7 @@
         else if (type === 'A_SHELL') color = 0xff5500;
         else if (type === 'A_CELL') color = 0x00ffff;
         else if (type === 'A_ROCKET') color = 0xff0000;
+        else if (type === 'A_ALL' || type === 'A') color = 0xeeeeee; // Universal Ammo Box (Silver)
 
         this.mesh = new THREE.Mesh(
           new THREE.BoxGeometry(0.6, 0.6, 0.6),
@@ -441,9 +442,16 @@
           else if (this.type === 'A_CELL') { amt = 50; pool = 'cell'; name = "Ячейки"; }
           else if (this.type === 'A_ROCKET') { amt = 5; pool = 'rocket'; name = "Ракеты"; }
           
-          ammoPool[pool] = Math.min(ammoLimits[pool], ammoPool[pool] + amt);
+          if (this.type === 'A_ALL' || this.type === 'A') {
+              for (let key in ammoPool) {
+                  ammoPool[key] = Math.min(ammoLimits[key], ammoPool[key] + 20);
+              }
+              logAction("Рюкзак боеприпасов! +20 всего", "#ffffff");
+          } else {
+              ammoPool[pool] = Math.min(ammoLimits[pool], ammoPool[pool] + amt);
+              logAction(`${name} +${amt}`, "#ffaa00");
+          }
           sfx.pickupAmmo();
-          logAction(`${name} +${amt}`, "#ffaa00");
         }
         updateHUD();
       }
@@ -874,8 +882,9 @@
         if (r < 0.4) map[pt.r][pt.c] = 'H';
         else if (r < 0.6) map[pt.r][pt.c] = 'A_BULLET';
         else if (r < 0.8) map[pt.r][pt.c] = 'A_SHELL';
-        else if (r < 0.9) map[pt.r][pt.c] = 'A_CELL';
-        else map[pt.r][pt.c] = 'A_ROCKET';
+        else if (r < 0.85) map[pt.r][pt.c] = 'A_CELL';
+        else if (r < 0.9) map[pt.r][pt.c] = 'A_ROCKET';
+        else map[pt.r][pt.c] = 'A_ALL';
       }
       
       return {
