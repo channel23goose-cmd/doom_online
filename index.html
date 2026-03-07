@@ -79,6 +79,16 @@
     
     /* Settings / Pause */
     #pause-menu { background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); }
+
+    .weapon-select {
+      display: flex; gap: 20px; margin-bottom: 30px;
+    }
+    .weapon-btn {
+      background: #220; border: 2px solid #550; color: #aaa; padding: 10px 20px;
+      font-size: 1.2rem; cursor: pointer; transition: 0.2s; font-family: inherit;
+    }
+    .weapon-btn.active { background: #520; border-color: #f70; color: #fff; box-shadow: 0 0 15px #f00; }
+
   </style>
 </head>
 <body>
@@ -87,9 +97,16 @@
   <div id="main-menu" class="screen">
     <div class="title">DOOM<br><span style="font-size: 2rem; color:#aa2200;">HELL ON WEB</span></div>
     <div class="text-box">
-      ОДИНОЧНАЯ ИГРА<br><br>
+      ВЫБЕРИ ОРУЖИЕ ДЛЯ СПУСКА:
+    </div>
+    <div class="weapon-select" id="weapon-picker">
+      <button class="weapon-btn active" onclick="selectWeapon('pistol')">ПИСТОЛЕТ</button>
+      <button class="weapon-btn" onclick="selectWeapon('shotgun')">ДРОБОВИК</button>
+      <button class="weapon-btn" onclick="selectWeapon('plasma')">ПЛАЗМА</button>
+    </div>
+    <div class="text-box" style="font-size: 0.9rem; margin-top: -10px;">
       Управление: WASD - Ходьба, SPACE - Прыжок, Мышь - Огонь<br>
-      Ищи выход (синий портал), убивай демонов, собирай патроны и аптечки!
+      Пройди 20 УРОВНЕЙ, чтобы выбраться живым!
     </div>
     <button class="btn" onclick="startGame(0)">НАЧАТЬ ИГРУ</button>
   </div>
@@ -102,7 +119,7 @@
 
   <div id="victory" class="screen hidden">
     <div class="title" style="color: #ffaa00;">ПОБЕДА!</div>
-    <div class="text-box">Вы зачистили комплекс и выбрались наружу. Расслабьтесь, пока демоны не вернулись.</div>
+    <div class="text-box">Вы выбрались наружу! 20 уровней ада позади.</div>
     <button class="btn" onclick="document.location.reload()">В ГЛАВНОЕ МЕНЮ</button>
   </div>
   
@@ -171,11 +188,25 @@
     let maxAmmo = 100;
     let isDead = false;
 
-    // Weapon
     let weaponGroup, muzzleLight;
     let bobTime = 0, recoilY = 0, recoilZ = 0;
     let canShoot = true;
     
+    // Weapon Stats Configuration
+    const WEAPON_DEFS = {
+      'pistol': { type: 'pistol', damage: 34, fireRate: 400, ammoUse: 1 },
+      'shotgun': { type: 'shotgun', damage: 90, fireRate: 800, ammoUse: 2 },
+      'plasma': { type: 'plasma', damage: 22, fireRate: 120, ammoUse: 1 }
+    };
+    let chosenWeapon = WEAPON_DEFS['pistol']; // default
+
+    // UI Weapon Selection
+    function selectWeapon(type) {
+      chosenWeapon = WEAPON_DEFS[type];
+      document.querySelectorAll('.weapon-btn').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+    }
+
     // Level Objects
     let mapGrid = [];
     let enemies = [];
@@ -195,12 +226,12 @@
     // 'E' = Enemy (Melee Zombie), 'S' = Shooter Enemy (Imp)
     // 'H' = Health Pack (+25), 'A' = Ammo Box (+20)
     // 'X' = Exit Portal
-    const LEVELS = [
+    // 'X' = Exit Portal
+    const PRESET_LEVELS = [
       {
         name: "УРОВЕНЬ 1: ЗАСТАВА",
         ambient: 0x663333,
         fog: 0x2a0a0a,
-        weapon: { type: 'pistol', damage: 34, fireRate: 400, ammoUse: 1 },
         map: [
           "##########",
           "#P.......#",
@@ -218,7 +249,6 @@
         name: "УРОВЕНЬ 2: ТЕМНЫЙ ЛАБИРИНТ",
         ambient: 0x333355,
         fog: 0x111122,
-        weapon: { type: 'shotgun', damage: 90, fireRate: 800, ammoUse: 2 },
         map: [
           "###############",
           "#P..#A....H...#",
@@ -236,7 +266,6 @@
         name: "УРОВЕНЬ 3: АРЕНА КРОВИ",
         ambient: 0x771111,
         fog: 0x330000,
-        weapon: { type: 'plasma', damage: 22, fireRate: 120, ammoUse: 1 },
         map: [
           "#################",
           "#......A.H......#",
@@ -523,14 +552,73 @@
     }
 
     // ── Build Level ──
+    function generateRandomLevel(idx) {
+      let size = Math.min(10 + idx * 2, 40); // map gets bigger
+      let map = [];
+      for(let r=0; r<size; r++) { map.push(new Array(size).fill('#')); }
+      
+      // Simple room carving
+      let cx = 1, cz = 1;
+      map[cz][cx] = 'P'; // Start
+      
+      for(let i=0; i<size*3; i++){
+        let w = 3 + Math.floor(Math.random()*4);
+        let h = 3 + Math.floor(Math.random()*4);
+        let rx = 1 + Math.floor(Math.random()*(size-w-2));
+        let rz = 1 + Math.floor(Math.random()*(size-h-2));
+        for(let rr=rz; rr<rz+h; rr++) {
+          for(let cc=rx; cc<rx+w; cc++) {
+            map[rr][cc] = '.';
+          }
+        }
+        // Path to (1,1)
+        for(let step=1; step<=Math.max(rx, rz); step++){
+          if(rx-step > 0) map[rz][rx-step] = '.';
+          if(rz-step > 0) map[rz-step][1] = '.';
+        }
+      }
+      
+      // Place exit far away
+      map[size-2][size-2] = 'X';
+      map[size-2][size-3] = '.';
+      map[size-3][size-2] = '.';
+      map[size-3][size-3] = '.';
+      
+      // Populate enemies and items
+      let openSpaces = [];
+      for(let r=1; r<size-1; r++){
+        for(let c=1; c<size-1; c++){
+          if(map[r][c] === '.') openSpaces.push({r,c});
+        }
+      }
+      
+      openSpaces.sort(() => Math.random() - 0.5);
+      let enemyCount = 3 + idx * 2;
+      for(let i=0; i<enemyCount && i<openSpaces.length; i++){
+        let pt = openSpaces[i];
+        map[pt.r][pt.c] = Math.random() < 0.3 ? 'S' : 'E';
+      }
+      for(let i=enemyCount; i<enemyCount + idx && i<openSpaces.length; i++){
+        let pt = openSpaces[i];
+        map[pt.r][pt.c] = Math.random() < 0.5 ? 'H' : 'A';
+      }
+      
+      return {
+        name: `УРОВЕНЬ ${idx + 1}: ГЛУБИНЫ АДА`,
+        ambient: Math.random() > 0.5 ? 0x552222 : 0x222255,
+        fog: 0x110000,
+        map: map.map(row => row.join(''))
+      };
+    }
+
     function loadLevel(index) {
-      if (index >= LEVELS.length) {
+      if (index >= 20) {
         winGame();
         return;
       }
       
       currentLevelIndex = index;
-      const lvl = LEVELS[index];
+      const lvl = index < 3 ? PRESET_LEVELS[index] : generateRandomLevel(index);
       mapGrid = lvl.map;
       
       document.getElementById('level-title').innerText = lvl.name;
@@ -623,7 +711,7 @@
       weaponGroup = new THREE.Group();
       gunPivot.add(weaponGroup);
       
-      let wType = LEVELS[currentLevelIndex].weapon.type;
+      let wType = chosenWeapon.type;
       
       if (wType === 'pistol') {
         const matDark = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5, metalness: 0.8 });
@@ -712,7 +800,7 @@
     }
 
     function fireWeapon() {
-      let wParams = LEVELS[currentLevelIndex].weapon;
+      let wParams = chosenWeapon;
 
       if (!canShoot || ammo < wParams.ammoUse) return;
       canShoot = false;
