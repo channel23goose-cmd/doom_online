@@ -240,7 +240,7 @@
     // Player Stats
     let maxHealth = 100;
     let myHealth = 100;
-    let ammoPool = { bullet: 50, shell: 20, cell: 40, rocket: 5 };
+    let ammoPool = { bullet: 100, shell: 50, cell: 100, rocket: 20 };
     let ammoLimits = { bullet: 200, shell: 50, cell: 300, rocket: 50 };
     let isDead = false;
     let particles = [];
@@ -1381,26 +1381,45 @@
             let sX = (Math.random()-0.5) * (curSpread + 0.1);
             let sY = (Math.random()-0.5) * (curSpread + 0.1);
             raycaster.setFromCamera({x: sX, y: sY}, camera);
+            let enemyMeshes = [];
+            enemies.forEach(e => { if (e.state !== 'DEAD') e.group.traverse(c => { if(c.isMesh) enemyMeshes.push(c); }); });
+            
+            // Find wall distance for this specific pellet
+            let pMaxDist = 100;
+            let pDir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation).add(new THREE.Vector3(sX, sY, 0)).normalize();
+            for(let j=1; j<pMaxDist; j+=0.5){
+              if (isWallGrid(camera.position.x + pDir.x*j, camera.position.z + pDir.z*j)){ pMaxDist = j; break; }
+            }
+
             let hitsS = raycaster.intersectObjects(enemyMeshes);
-            let hit = hitsS.find(h => h.distance <= maxDist);
+            let hit = hitsS.find(h => h.distance <= pMaxDist);
             if (hit) hit.object.userData.enemyRef.takeDamage(wParams.damage / pellets);
         }
-      } else if (wParams.type === 'rocket') {
-        let rDir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation).normalize();
-        projectiles.push(new Projectile(camera.position.x, camera.position.y - 0.2, camera.position.z, rDir, 'rocket'));
+      } else if (wParams.type === 'rocket' || wParams.type === 'bfg' || wParams.type === 'plasma') {
+        projectiles.push(new Projectile(camera.position.x, camera.position.y - 0.2, camera.position.z, dir, wParams.type));
+        if (wParams.type === 'bfg') screenShake = 0.5;
+        if (wParams.type === 'rocket') screenShake = 0.2;
       } else if (wParams.type === 'chainsaw') {
         raycaster.setFromCamera({x:0, y:0}, camera);
+        let enemyMeshes = [];
+        enemies.forEach(e => { if (e.state !== 'DEAD') e.group.traverse(c => { if(c.isMesh) enemyMeshes.push(c); }); });
         let hitsC = raycaster.intersectObjects(enemyMeshes);
-        let hit = hitsC.find(h => h.distance <= 2.5); // very short range
+        let hit = hitsC.find(h => h.distance <= 2.5);
         if (hit) hit.object.userData.enemyRef.takeDamage(wParams.damage);
-      } else if (wParams.type === 'bfg') {
-        // Shoot BFG projectile
-        let bfgDir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation).normalize();
-        projectiles.push(new Projectile(camera.position.x, camera.position.y - 0.2, camera.position.z, bfgDir, 'bfg'));
-        screenShake = 0.4;
       } else {
-        // Pistol / Plasma hits first target (already has spread in Raycaster init)
-        let hitEnemy = hits.find(h => h.distance <= maxDist);
+        // Pistol
+        raycaster.setFromCamera({x: (Math.random()-0.5)*curSpread, y: (Math.random()-0.5)*curSpread}, camera);
+        let enemyMeshes = [];
+        enemies.forEach(e => { if (e.state !== 'DEAD') e.group.traverse(c => { if(c.isMesh) enemyMeshes.push(c); }); });
+        
+        // Wall distance
+        let pMaxDist = 100;
+        for(let j=1; j<pMaxDist; j+=0.5){
+          if (isWallGrid(camera.position.x + dir.x*j, camera.position.z + dir.z*j)){ pMaxDist = j; break; }
+        }
+
+        let hits = raycaster.intersectObjects(enemyMeshes);
+        let hitEnemy = hits.find(h => h.distance <= pMaxDist);
         if (hitEnemy) hitEnemy.object.userData.enemyRef.takeDamage(wParams.damage);
       }
     }
