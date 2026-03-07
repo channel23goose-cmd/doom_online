@@ -114,21 +114,33 @@
       ВЫБЕРИ ОРУЖИЕ ДЛЯ СПУСКА:
     </div>
     <div class="weapon-select" id="weapon-picker">
+      <div class="weapon-card" onclick="selectWeapon('chainsaw', this)">
+        <h3>БЕНЗОПИЛА</h3>
+        <p>Урон: 40<br>Темп: 100мс<br>Тип: Ближний</p>
+      </div>
       <div class="weapon-card active" onclick="selectWeapon('pistol', this)">
         <h3>ПИСТОЛЕТ</h3>
-        <p>Урон: 34<br>Темп: 400мс<br>Расход: 1</p>
+        <p>Урон: 34<br>Темп: 400мс<br>Тип: Пули</p>
       </div>
       <div class="weapon-card" onclick="selectWeapon('shotgun', this)">
         <h3>ДРОБОВИК</h3>
-        <p>Урон: 90<br>Темп: 800мс<br>Расход: 2</p>
+        <p>Урон: 90<br>Темп: 800мс<br>Тип: Дробь</p>
+      </div>
+      <div class="weapon-card" onclick="selectWeapon('ssg', this)">
+        <h3>ДВУСТВОЛКА</h3>
+        <p>Урон: 250<br>Темп: 1200мс<br>Тип: Дробь (x2)</p>
+      </div>
+      <div class="weapon-card" onclick="selectWeapon('rocket', this)">
+        <h3>РАКЕТНИЦА</h3>
+        <p>Урон: 200+<br>Темп: 900мс<br>Тип: Ракеты</p>
       </div>
       <div class="weapon-card" onclick="selectWeapon('plasma', this)">
         <h3>ПЛАЗМА</h3>
-        <p>Урон: 22<br>Темп: 120мс<br>Расход: 1</p>
+        <p>Урон: 22<br>Темп: 120мс<br>Тип: Ячейки</p>
       </div>
       <div class="weapon-card" onclick="selectWeapon('bfg', this)">
         <h3>BFG-9000</h3>
-        <p>Урон: 500+<br>Темп: 1500мс<br>Расход: 40</p>
+        <p>Урон: 500+<br>Темп: 1500мс<br>Тип: Ячейки (x40)</p>
       </div>
     </div>
     <div class="text-box" style="font-size: 0.9rem; margin-top: -10px;">
@@ -186,8 +198,11 @@
     </div>
     
     <div class="hud-panel" id="hud-ammo">
-      <div class="hud-label">ПАТРОНЫ</div>
-      <div class="hud-val" id="ammo-val" style="color:#ffaa00;">50</div>
+      <div style="font-size:2rem; color:#ffaa00;">☣</div>
+      <div>
+        <div id="ammo-label" class="hud-label">BULLETS</div>
+        <div class="hud-val" id="ammo-val">50</div>
+      </div>
     </div>
   </div>
 
@@ -225,24 +240,28 @@
     // Player Stats
     let maxHealth = 100;
     let myHealth = 100;
-    let ammo = 50;
-    let maxAmmo = 200;
+    let ammoPool = { bullet: 50, shell: 10, cell: 0, rocket: 0 };
+    let ammoLimits = { bullet: 200, shell: 50, cell: 300, rocket: 50 };
     let isDead = false;
     let particles = [];
     let screenShake = 0;
     let recoilKick = 0; // Camera recoil (pitch)
     let curSpread = 0;  // Current accuracy spread
-
+    let isMouseDown = false;
+    
     let weaponGroup, muzzleLight, gunPivot;
     let bobTime = 0, recoilY = 0, recoilZ = 0;
     let canShoot = true;
     
     // Weapon Stats Configuration
     const WEAPON_DEFS = {
-      'pistol': { type: 'pistol', damage: 34, fireRate: 400, ammoUse: 1 },
-      'shotgun': { type: 'shotgun', damage: 90, fireRate: 800, ammoUse: 2 },
-      'plasma': { type: 'plasma', damage: 22, fireRate: 120, ammoUse: 1 },
-      'bfg': { type: 'bfg', damage: 500, fireRate: 1500, ammoUse: 40 }
+      'chainsaw': { type: 'chainsaw', damage: 40, fireRate: 100, ammoType: null, ammoUse: 0 },
+      'pistol': { type: 'pistol', damage: 34, fireRate: 400, ammoType: 'bullet', ammoUse: 1 },
+      'shotgun': { type: 'shotgun', damage: 90, fireRate: 800, ammoType: 'shell', ammoUse: 1 },
+      'ssg': { type: 'ssg', damage: 250, fireRate: 1200, ammoType: 'shell', ammoUse: 2 },
+      'rocket': { type: 'rocket', damage: 200, fireRate: 900, ammoType: 'rocket', ammoUse: 1 },
+      'plasma': { type: 'plasma', damage: 22, fireRate: 120, ammoType: 'cell', ammoUse: 1 },
+      'bfg': { type: 'bfg', damage: 500, fireRate: 1500, ammoType: 'cell', ammoUse: 40 }
     };
     let chosenWeapon = WEAPON_DEFS['pistol']; // default
 
@@ -353,6 +372,9 @@
       enemyDeath() { this.play(100, 'sawtooth', 0.5, 0.6, -80); },
       playerHurt() { this.play(150, 'square', 0.2, 0.7, -100); },
       shootBfg() { this.play(100, 'sine', 0.5, 1.0, 300); this.play(500, 'square', 0.8, 0.5, -400); },
+      shootSsg() { this.play(150, 'square', 0.4, 1.0, -100); this.play(80, 'sawtooth', 0.5, 1.0, -60); },
+      shootRocket() { this.play(400, 'sawtooth', 0.3, 0.8, -200); },
+      shootChainsaw() { this.play(50, 'sawtooth', 0.1, 0.2, Math.sin(Date.now()*0.1)*50); },
       pickupHealth() { this.play(400, 'sine', 0.3, 0.4, 400); this.play(600, 'sine', 0.4, 0.4, 600); },
       pickupAmmo() { this.play(600, 'square', 0.1, 0.3, 0); this.play(800, 'square', 0.15, 0.3, 0); }
     };
@@ -369,13 +391,19 @@
     // Pickups
     class Pickup {
       constructor(type, x, z) {
-        this.type = type; // 'H' or 'A'
+        this.type = type; // 'H', 'A_BULLET', 'A_SHELL', 'A_CELL', 'A_ROCKET'
         this.x = x; this.z = z; this.y = 0.5;
         this.active = true;
         
-        let color = type === 'H' ? 0x00ff44 : 0xffaa00;
+        let color = 0xffffff;
+        if (type === 'H') color = 0x00ff44;
+        else if (type === 'A_BULLET') color = 0xffaa00;
+        else if (type === 'A_SHELL') color = 0xff5500;
+        else if (type === 'A_CELL') color = 0x00ffff;
+        else if (type === 'A_ROCKET') color = 0xff0000;
+
         this.mesh = new THREE.Mesh(
-          new THREE.BoxGeometry(0.8, 0.8, 0.8),
+          new THREE.BoxGeometry(0.6, 0.6, 0.6),
           new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 0.4 })
         );
         this.mesh.position.set(x, this.y, z);
@@ -407,10 +435,16 @@
           myHealth = Math.min(maxHealth, myHealth + 25);
           sfx.pickupHealth();
           logAction("Аптечка +25 HP", "#00ff44");
-        } else if (this.type === 'A') {
-          ammo = Math.min(maxAmmo, ammo + 20);
+        } else {
+          let amt = 20, pool = 'bullet', name = "Патроны";
+          if (this.type === 'A_BULLET') { amt = 20; pool = 'bullet'; name = "Патроны"; }
+          else if (this.type === 'A_SHELL') { amt = 8; pool = 'shell'; name = "Дробь"; }
+          else if (this.type === 'A_CELL') { amt = 50; pool = 'cell'; name = "Ячейки"; }
+          else if (this.type === 'A_ROCKET') { amt = 5; pool = 'rocket'; name = "Ракеты"; }
+          
+          ammoPool[pool] = Math.min(ammoLimits[pool], ammoPool[pool] + amt);
           sfx.pickupAmmo();
-          logAction("Патроны +20", "#ffaa00");
+          logAction(`${name} +${amt}`, "#ffaa00");
         }
         updateHUD();
       }
@@ -639,20 +673,32 @@
     // Fireballs & BFG Orbs
     class Projectile {
       constructor(x, y, z, dir, type='enemy') {
-        let isBFG = type === 'bfg';
-        this.type = type;
-        this.mesh = new THREE.Mesh(
-          new THREE.SphereGeometry(isBFG ? 0.8 : 0.3, 8, 8),
-          new THREE.MeshBasicMaterial({ color: isBFG ? 0x00ff00 : 0xffaa00 })
-        );
-        this.mesh.position.set(x, y, z);
-        this.dir = dir;
-        this.speed = isBFG ? 15 : 20;
+        this.type = type; // 'plasma', 'rocket', 'bfg', 'enemy'
         this.active = true;
-        scene.add(this.mesh);
+        let isBFG = type === 'bfg';
+        let isRocket = type === 'rocket';
+        let isPlasma = type === 'plasma';
         
-        if (isBFG) {
-          this.light = new THREE.PointLight(0x00ff00, 2, 10);
+        this.speed = isBFG ? 12 : (isRocket ? 25 : 35);
+        this.damage = isBFG ? 500 : (isRocket ? 150 : 15);
+        this.radius = isBFG ? 6 : (isRocket ? 4 : 0.5);
+        
+        let color = 0x00ffff;
+        if (isBFG) color = 0x00ff00;
+        else if (isRocket) color = 0xffaa00;
+        else if (type === 'enemy') color = 0xff5500;
+
+        let geom = isBFG ? new THREE.SphereGeometry(0.5, 8, 8) : 
+                   (isRocket ? new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8) : new THREE.SphereGeometry(0.15, 4, 4));
+        
+        this.mesh = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color: color }));
+        if (isRocket) this.mesh.rotation.x = Math.PI/2;
+        this.mesh.position.set(x, y, z);
+        this.dir = dir.clone().normalize();
+        scene.add(this.mesh);
+
+        if (isBFG || isRocket) {
+          this.light = new THREE.PointLight(color, 2, 10);
           this.mesh.add(this.light);
         }
       }
@@ -666,7 +712,7 @@
             this.destroy();
             return;
           }
-        } else if (this.type === 'bfg') {
+        } else if (this.type === 'bfg' || this.type === 'rocket') {
           // Check enemy hits
           for(let e of enemies) {
             if (e.state !== 'DEAD' && this.mesh.position.distanceTo(e.group.position) < 2) {
@@ -674,23 +720,31 @@
               return;
             }
           }
+        } else if (this.type === 'plasma') {
+          for(let e of enemies) {
+            if (e.state !== 'DEAD' && this.mesh.position.distanceTo(e.group.position) < 1.5) {
+              e.takeDamage(this.damage);
+              this.destroy();
+              return;
+            }
+          }
         }
         
         // Check wall hit
         if (isWallGrid(this.mesh.position.x, this.mesh.position.z)) {
-          if (this.type === 'bfg') this.explode();
+          if (this.type === 'bfg' || this.type === 'rocket') this.explode();
           else this.destroy();
         }
       }
       explode() {
         if (!this.active) return;
-        screenShake = 0.8;
+        screenShake = this.type === 'bfg' ? 0.8 : 0.4;
         spawnBlood(this.mesh.position.x, this.mesh.position.y, this.mesh.position.z, 20);
         // AOE Damage
         for(let e of enemies) {
           if (e.state !== 'DEAD') {
             let d = this.mesh.position.distanceTo(e.group.position);
-            if (d < 8) e.takeDamage(500 * (1 - d/8));
+            if (d < this.radius) e.takeDamage(this.damage * (1 - d/this.radius));
           }
         }
         this.destroy();
@@ -817,7 +871,12 @@
       }
       for(let i=enemyCount; i<enemyCount + idx && i<openSpaces.length; i++){
         let pt = openSpaces[i];
-        map[pt.r][pt.c] = Math.random() < 0.5 ? 'H' : 'A';
+        let r = Math.random();
+        if (r < 0.4) map[pt.r][pt.c] = 'H';
+        else if (r < 0.6) map[pt.r][pt.c] = 'A_BULLET';
+        else if (r < 0.8) map[pt.r][pt.c] = 'A_SHELL';
+        else if (r < 0.9) map[pt.r][pt.c] = 'A_CELL';
+        else map[pt.r][pt.c] = 'A_ROCKET';
       }
       
       return {
@@ -1049,6 +1108,53 @@
         weaponGroup.add(body, nozzle, core, grip);
         weaponGroup.position.set(0.35, -0.4, -0.5);
         weaponGroup.userData.defPos = weaponGroup.position.clone();
+
+      } else if (wType === 'ssg') {
+        const matDark = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+        const matMetal = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.3, metalness: 0.9 });
+        const matWood = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 1.0 });
+
+        let barrel1 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.7, 12), matMetal);
+        barrel1.rotation.x = Math.PI/2; barrel1.position.set(-0.065, 0, -0.3);
+        
+        let barrel2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.7, 12), matMetal);
+        barrel2.rotation.x = Math.PI/2; barrel2.position.set(0.065, 0, -0.3);
+
+        let body = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.18, 0.4), matDark);
+        body.position.set(0, -0.02, 0);
+
+        let stock = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.25, 0.5), matWood);
+        stock.position.set(0, -0.1, 0.4);
+
+        weaponGroup.add(barrel1, barrel2, body, stock);
+        weaponGroup.position.set(0.3, -0.4, -0.5);
+        weaponGroup.userData.defPos = weaponGroup.position.clone();
+
+      } else if (wType === 'chainsaw') {
+        const matCasing = new THREE.MeshStandardMaterial({ color: 0xccaa00, roughness: 0.5 });
+        const matBlade = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9 });
+        
+        let body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.5), matCasing);
+        let blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.15, 0.8), matBlade);
+        blade.position.set(0, 0, -0.6);
+        
+        weaponGroup.add(body, blade);
+        weaponGroup.position.set(0.3, -0.5, -0.4);
+        weaponGroup.userData.defPos = weaponGroup.position.clone();
+
+      } else if (wType === 'rocket') {
+        const matGreen = new THREE.MeshStandardMaterial({ color: 0x224422, roughness: 0.6 });
+        const matDark = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+        let tube = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.9, 16), matGreen);
+        tube.rotation.x = Math.PI/2; tube.position.set(0,0,-0.4);
+        
+        let handle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.15), matDark);
+        handle.position.set(0, -0.25, -0.1);
+
+        weaponGroup.add(tube, handle);
+        weaponGroup.position.set(0.4, -0.4, -0.5);
+        weaponGroup.userData.defPos = weaponGroup.position.clone();
       }
     }
 
@@ -1160,10 +1266,12 @@
       document.addEventListener('keyup', e => keys[e.code] = false);
 
       const canvasEl = document.getElementById('c');
+      canvasEl.addEventListener('mousedown', () => { isMouseDown = true; });
+      window.addEventListener('mouseup', () => { isMouseDown = false; });
+
       canvasEl.addEventListener('click', () => {
         if (gameState === 'PLAYING') {
           if (!document.pointerLockElement) canvasEl.requestPointerLock();
-          else fireWeapon();
         }
       });
 
@@ -1200,20 +1308,23 @@
     function fireWeapon() {
       let wParams = chosenWeapon;
 
-      if (ammo < wParams.ammoUse) {
-          logAction("НЕТ ПАТРОНОВ!", "#ff4444");
+      if (wParams.ammoType && ammoPool[wParams.ammoType] < wParams.ammoUse) {
+          logAction(`НЕТ ПАТРОНОВ: ${wParams.ammoType.toUpperCase()}`, "#ff4444");
           return;
       }
       if (!canShoot) return;
       canShoot = false;
-      ammo -= wParams.ammoUse;
+      if (wParams.ammoType) ammoPool[wParams.ammoType] -= wParams.ammoUse;
       updateHUD();
       
       // Audio
       if (wParams.type === 'pistol') sfx.shootPistol();
       else if (wParams.type === 'shotgun') sfx.shootShotgun();
+      else if (wParams.type === 'ssg') sfx.shootSsg();
       else if (wParams.type === 'plasma') sfx.shootPlasma();
       else if (wParams.type === 'bfg') sfx.shootBfg();
+      else if (wParams.type === 'rocket') sfx.shootRocket();
+      else if (wParams.type === 'chainsaw') sfx.shootChainsaw();
 
       // Recoil & Spread calc
       let kickAmt = 0.05;
@@ -1256,18 +1367,31 @@
 
       let hits = raycaster.intersectObjects(enemyMeshes);
       
-      if (wParams.type === 'shotgun') {
-        // Shotgun hits multiple targets slightly
-        hits.forEach((h, idx) => {
-          if (h.distance <= maxDist && idx < 3) h.object.userData.enemyRef.takeDamage(wParams.damage / (idx+1));
-        });
+      if (wParams.type === 'shotgun' || wParams.type === 'ssg') {
+        const pellets = wParams.type === 'ssg' ? 20 : 8;
+        for(let i=0; i<pellets; i++) {
+            let sX = (Math.random()-0.5) * (curSpread + 0.1);
+            let sY = (Math.random()-0.5) * (curSpread + 0.1);
+            raycaster.setFromCamera({x: sX, y: sY}, camera);
+            let hitsS = raycaster.intersectObjects(enemyMeshes);
+            let hit = hitsS.find(h => h.distance <= maxDist);
+            if (hit) hit.object.userData.enemyRef.takeDamage(wParams.damage / pellets);
+        }
+      } else if (wParams.type === 'rocket') {
+        let rDir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation).normalize();
+        projectiles.push(new Projectile(camera.position.x, camera.position.y - 0.2, camera.position.z, rDir, 'rocket'));
+      } else if (wParams.type === 'chainsaw') {
+        raycaster.setFromCamera({x:0, y:0}, camera);
+        let hitsC = raycaster.intersectObjects(enemyMeshes);
+        let hit = hitsC.find(h => h.distance <= 2.5); // very short range
+        if (hit) hit.object.userData.enemyRef.takeDamage(wParams.damage);
       } else if (wParams.type === 'bfg') {
         // Shoot BFG projectile
         let bfgDir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation).normalize();
         projectiles.push(new Projectile(camera.position.x, camera.position.y - 0.2, camera.position.z, bfgDir, 'bfg'));
         screenShake = 0.4;
       } else {
-        // Pistol / Plasma hits first target
+        // Pistol / Plasma hits first target (already has spread in Raycaster init)
         let hitEnemy = hits.find(h => h.distance <= maxDist);
         if (hitEnemy) hitEnemy.object.userData.enemyRef.takeDamage(wParams.damage);
       }
@@ -1294,8 +1418,21 @@
     function updateHUD() {
       document.getElementById('hp-val').innerText = Math.max(0, myHealth);
       const amVal = document.getElementById('ammo-val');
-      amVal.innerText = ammo;
-      amVal.style.color = ammo < 10 ? "#ff4444" : "#fff";
+      const amLabel = document.getElementById('ammo-label') || { innerText: "" };
+      
+      let curAmmo = 0;
+      let label = "AMMO";
+      if (chosenWeapon.ammoType) {
+          curAmmo = ammoPool[chosenWeapon.ammoType];
+          label = chosenWeapon.ammoType.toUpperCase();
+      } else {
+          curAmmo = "∞";
+          label = "MELEE";
+      }
+
+      amVal.innerText = curAmmo;
+      if (document.getElementById('ammo-label')) document.getElementById('ammo-label').innerText = label;
+      amVal.style.color = (curAmmo !== "∞" && curAmmo < (chosenWeapon.type==='bfg'?40:5)) ? "#ff4444" : "#fff";
     }
 
     function logAction(msg, color="#fff") {
@@ -1429,8 +1566,10 @@
         if (screenShake < 0.01) screenShake = 0;
       }
 
-      // Touch Shooting
-      if (gameState === 'PLAYING' && isTouchShooting) fireWeapon();
+      // Continuous Shooting (Mouse or Touch)
+      if (gameState === 'PLAYING' && (isTouchShooting || (isMouseDown && document.pointerLockElement))) {
+          fireWeapon();
+      }
 
       // Weapon Sway & Recoil
       if (len > 0 && onGround) bobTime += dt * 10 * speedMult;
