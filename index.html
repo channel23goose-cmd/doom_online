@@ -485,12 +485,14 @@
 
         this.group.add(this.torso, this.head, this.armL, this.armR, this.legL, this.legR);
         
-        // Raycast targets
+        // Raycast targets (hit detection)
         this.group.userData.isEnemy = true;
         this.group.userData.enemyRef = this;
-        [this.torso, this.head, this.armL, this.armR, this.legL, this.legR].forEach(m => {
-            m.userData.isEnemy = true;
-            m.userData.enemyRef = this;
+        this.group.traverse(child => {
+            if (child.isMesh) {
+                child.userData.isEnemy = true;
+                child.userData.enemyRef = this;
+            }
         });
         
         scene.add(this.group);
@@ -717,7 +719,7 @@
       update(dt) {
         this.vel.y += GRAVITY * dt * 0.5;
         this.mesh.position.addScaledVector(this.vel, dt);
-        this.life -= dt * 2;
+        this.life -= dt * 1.5;
         if (this.life <= 0) this.destroy();
       }
       destroy() {
@@ -726,9 +728,9 @@
       }
     }
 
-    function spawnBlood(x, y, z, count=8) {
+    function spawnBlood(x, y, z, count=12) {
       for(let i=0; i<count; i++) {
-        particles.push(new Particle(x, y, z, 0xff0000, 0.1 + Math.random()*0.1));
+        particles.push(new Particle(x, y, z, 0xff0000, 0.08 + Math.random()*0.12));
       }
     }
 
@@ -965,6 +967,7 @@
         
         weaponGroup.add(slide, frame, grip, sight, triggerGuard);
         weaponGroup.position.set(0.3, -0.4, -0.5);
+        weaponGroup.userData.defPos = weaponGroup.position.clone();
 
       } else if (wType === 'shotgun') {
         const matDark = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
@@ -988,6 +991,7 @@
 
         weaponGroup.add(barrel1, barrel2, receiver, pump, stock);
         weaponGroup.position.set(0.3, -0.4, -0.6);
+        weaponGroup.userData.defPos = weaponGroup.position.clone();
 
       } else if (wType === 'plasma') {
         const matBody = new THREE.MeshStandardMaterial({ color: 0x333344, roughness: 0.4, metalness: 0.7 });
@@ -1013,6 +1017,7 @@
         
         weaponGroup.add(body, core, rings, grip);
         weaponGroup.position.set(0.3, -0.4, -0.5);
+        weaponGroup.userData.defPos = weaponGroup.position.clone();
 
       } else if (wType === 'bfg') {
         const matBody = new THREE.MeshStandardMaterial({ color: 0x113311, roughness: 0.2, metalness: 0.8 });
@@ -1033,6 +1038,7 @@
         
         weaponGroup.add(body, nozzle, core, grip);
         weaponGroup.position.set(0.35, -0.4, -0.5);
+        weaponGroup.userData.defPos = weaponGroup.position.clone();
       }
     }
 
@@ -1210,7 +1216,13 @@
       // Hitscan Raycast
       raycaster.setFromCamera({x:0, y:0}, camera);
       let enemyMeshes = [];
-      enemies.forEach(e => { if (e.state !== 'DEAD') { enemyMeshes.push(e.body, e.head); } });
+      enemies.forEach(e => {
+        if (e.state !== 'DEAD') {
+          e.group.traverse(child => {
+            if (child.isMesh) enemyMeshes.push(child);
+          });
+        }
+      });
       
       // Find closest wall intersection to limit ray
       let maxDist = 100;
@@ -1392,7 +1404,13 @@
       
       recoilY *= 0.8;
       recoilZ *= 0.8;
-      weaponGroup.position.set(0.25 + bobX, -0.3 + bobY + recoilY, -0.4 + recoilZ);
+      
+      // Use defPos if available, else default
+      let defX = weaponGroup.userData.defPos ? weaponGroup.userData.defPos.x : 0.25;
+      let defY = weaponGroup.userData.defPos ? weaponGroup.userData.defPos.y : -0.3;
+      let defZ = weaponGroup.userData.defPos ? weaponGroup.userData.defPos.z : -0.4;
+      
+      weaponGroup.position.set(defX + bobX, defY + bobY + recoilY, defZ + recoilZ);
       
       if (muzzleLight.intensity > 0) {
         let mDir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation);
