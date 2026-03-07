@@ -291,7 +291,6 @@
     // 'E' = Enemy (Melee Zombie), 'S' = Shooter Enemy (Imp)
     // 'H' = Health Pack (+25), 'A' = Ammo Box (+20)
     // 'X' = Exit Portal
-    // 'X' = Exit Portal
     const PRESET_LEVELS = [
       {
         name: "УРОВЕНЬ 1: ЗАСТАВА",
@@ -969,7 +968,7 @@
               yaw = 0; pitch = 0;
             } else if (char === 'E' || char === 'S' || char === 'B') {
               enemies.push(new Enemy(char, cx, cz));
-            } else if (char === 'H' || char === 'A') {
+            } else if (char === 'H' || char === 'A' || char.startsWith('A_')) {
               pickups.push(new Pickup(char, cx, cz));
             } else if (char === 'X') {
               exitZone = { x: cx, z: cz };
@@ -988,7 +987,7 @@
       
       // Reset variables
       myHealth = maxHealth;
-      ammo = maxAmmo;
+      // Note: We don't reset ammoPool here to allow persistence between levels
       velY = 0;
       updateHUD();
       logAction(`ТЫ ПОПАЛ В АД: ${lvl.name}`, "#ff0000");
