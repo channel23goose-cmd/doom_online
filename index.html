@@ -80,6 +80,17 @@
     /* Settings / Pause */
     #pause-menu { background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); }
 
+    /* ── TOUCH CONTROLS ── */
+    #touch-controls { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+    #joystick-zone { position: absolute; bottom: 20px; left: 20px; width: 150px; height: 150px; background: rgba(255,255,255,0.1); border-radius: 50%; pointer-events: auto; }
+    #joystick-knob { position: absolute; bottom: 70px; left: 70px; width: 50px; height: 50px; background: rgba(255,0,0,0.5); border-radius: 50%; pointer-events: none; transform: translate(-50%, 50%); display: none; }
+    #look-zone { position: absolute; top: 0; right: 0; width: 50%; height: 100vh; pointer-events: auto; }
+    .touch-btn { position: absolute; width: 80px; height: 80px; background: rgba(255,50,0,0.5); color: #fff; border: 2px solid #ffaa00; border-radius: 50%; font-weight: bold; pointer-events: auto; user-select: none; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; }
+    .touch-btn:active { background: rgba(255,0,0,0.8); }
+    #btn-jump { bottom: 20px; right: 120px; }
+    #btn-shoot { bottom: 100px; right: 20px; width: 100px; height: 100px; }
+    @media (min-width: 800px) { #touch-controls { display: none !important; } }
+
     .weapon-select {
       display: flex; gap: 20px; margin-bottom: 30px; justify-content: center;
     }
@@ -146,6 +157,16 @@
 
   <!-- IN-GAME -->
   <canvas id="c" class="hidden"></canvas>
+  
+  <!-- TOUCH CONTROLS -->
+  <div id="touch-controls" class="hidden">
+    <div id="joystick-zone"></div>
+    <div id="joystick-knob"></div>
+    <div id="look-zone"></div>
+    <div id="btn-jump" class="touch-btn">JUMP</div>
+    <div id="btn-shoot" class="touch-btn">FIRE</div>
+  </div>
+
   <div id="hud" class="hidden">
     <div id="damage-flash"></div>
     <div id="crosshair"></div>
@@ -192,6 +213,10 @@
     let velY = 0, onGround = false;
     let yaw = 0, pitch = 0;
     const keys = {};
+    let touchMove = { x: 0, y: 0 };
+    let isTouchShooting = false;
+    let lookTouchId = null;
+    let moveTouchId = null;
     
     // Player Stats
     let maxHealth = 100;
@@ -390,31 +415,70 @@
         this.speed = type === 'E' ? 4 : 2;
         this.state = 'IDLE'; // IDLE, CHASE, ATTACK, DEAD
         this.attackTimer = 0;
+        this.walkCycle = Math.random() * Math.PI * 2;
         
         this.group = new THREE.Group();
         this.group.position.set(x, 0, z);
         
-        let color = type === 'E' ? 0xcc2222 : 0xaa00ff;
+        let colorBody = type === 'E' ? 0x992222 : 0xaa00ff;
+        let colorSkin = type === 'E' ? 0xffccaa : 0xddbbff;
+        let colorEye = type === 'E' ? 0xffea00 : 0x00ffff;
         
-        // Build crude 3D model
-        let matBody = new THREE.MeshStandardMaterial({ color: color });
-        let matHead = new THREE.MeshStandardMaterial({ color: 0xffaaaa });
+        let matBody = new THREE.MeshStandardMaterial({ color: colorBody, roughness: 0.8 });
+        let matSkin = new THREE.MeshStandardMaterial({ color: colorSkin, roughness: 0.6 });
+        let matEye = new THREE.MeshBasicMaterial({ color: colorEye });
         
-        this.body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 0.8), matBody);
-        this.body.position.y = 0.8;
-        this.head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), matHead);
-        this.head.position.y = 1.9;
+        // Torso
+        this.torso = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.6), matBody);
+        this.torso.position.y = 1.2;
         
-        this.group.add(this.body);
-        this.group.add(this.head);
+        // Head
+        this.head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), matSkin);
+        this.head.position.y = 2.1;
+
+        // Eyes
+        this.eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.1), matEye);
+        this.eyeL.position.set(-0.15, 0.1, 0.31);
+        this.eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.1), matEye);
+        this.eyeR.position.set(0.15, 0.1, 0.31);
+        this.head.add(this.eyeL, this.eyeR);
         
-        // Mark as enemy for raycaster
+        // Limbs
+        this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.3), matSkin);
+        this.armL.position.set(-0.65, 1.3, 0);
+        this.armR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.3), matSkin);
+        this.armR.position.set(0.65, 1.3, 0);
+
+        this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), matBody);
+        this.legL.position.set(-0.25, 0.4, 0);
+        this.legR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), matBody);
+        this.legR.position.set(0.25, 0.4, 0);
+
+        // Halo/Horns depending on type
+        if (type === 'S') {
+           this.halo = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 8, 16), matEye);
+           this.halo.position.y = 2.6;
+           this.halo.rotation.x = Math.PI / 2;
+           this.group.add(this.halo);
+        } else {
+           let hornL = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 4), matSkin);
+           hornL.position.set(-0.2, 2.5, 0);
+           hornL.rotation.z = -0.2;
+           let hornR = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 4), matSkin);
+           hornR.position.set(0.2, 2.5, 0);
+           hornR.rotation.z = 0.2;
+           this.group.add(hornL, hornR);
+        }
+
+        this.group.add(this.torso, this.head, this.armL, this.armR, this.legL, this.legR);
+        
+        // Raycast targets
         this.group.userData.isEnemy = true;
         this.group.userData.enemyRef = this;
-        this.body.userData.isEnemy = true;
-        this.body.userData.enemyRef = this;
-        this.head.userData.isEnemy = true;
-        this.head.userData.enemyRef = this;
+        [this.torso, this.head, this.armL, this.armR, this.legL, this.legR].forEach(m => {
+            m.userData.isEnemy = true;
+            m.userData.enemyRef = this;
+        });
         
         scene.add(this.group);
       }
@@ -423,15 +487,23 @@
         if (this.state === 'DEAD') return;
         this.health -= amount;
         this.head.material.emissive.setHex(0xff0000);
-        setTimeout(() => { if (this.state !== 'DEAD') this.head.material.emissive.setHex(0x000000); }, 100);
+        this.torso.material.emissive.setHex(0xff0000);
+        setTimeout(() => { 
+            if (this.state !== 'DEAD') {
+                this.head.material.emissive.setHex(0x000000); 
+                this.torso.material.emissive.setHex(0x000000);
+            }
+        }, 100);
         this.state = 'CHASE'; // Aggro on hit
         sfx.enemyHit();
         
         if (this.health <= 0) {
           this.state = 'DEAD';
-          this.body.material.color.setHex(0x330000);
-          this.head.material.color.setHex(0x330000);
-          // Fall over
+          [this.head, this.torso, this.armL, this.armR, this.legL, this.legR].forEach(m => m.material.color.setHex(0x330000));
+          this.eyeL.material.color.setHex(0x330000);
+          this.eyeR.material.color.setHex(0x330000);
+          if(this.halo) this.halo.material.color.setHex(0x330000);
+          
           this.group.rotation.x = -Math.PI/2;
           this.group.position.y = 0.4;
           sfx.enemyDeath();
@@ -446,11 +518,11 @@
         let pz = camera.position.z;
         let dist = Math.hypot(px - this.x, pz - this.z);
         
-        // Turn to player
         let angle = Math.atan2(px - this.x, pz - this.z);
         this.group.rotation.y = angle;
         
-        // AI Logic
+        let isMoving = false;
+
         if (this.state === 'IDLE') {
           if (dist < 20 && checkLineOfSight(this.x, 1, this.z, px, PLAYER_H, pz)) {
             this.state = 'CHASE';
@@ -459,12 +531,11 @@
         
         if (this.state === 'CHASE') {
           if (dist > (this.type === 'E' ? 2 : 12)) {
-            // Move forwards
             let nx = this.x + Math.sin(angle) * this.speed * dt;
             let nz = this.z + Math.cos(angle) * this.speed * dt;
-            // Simple Wall Collision
             if (!isWallGrid(nx, this.z)) this.x = nx;
             if (!isWallGrid(this.x, nz)) this.z = nz;
+            isMoving = true;
           } else if (dist <= (this.type === 'E' ? 2 : 12)) {
             if (checkLineOfSight(this.x, 1, this.z, px, PLAYER_H, pz)) {
               this.state = 'ATTACK';
@@ -484,6 +555,27 @@
             }
           }
         }
+
+        // Animation
+        if (isMoving) {
+            this.walkCycle += dt * this.speed * 2;
+            this.legL.rotation.x = Math.sin(this.walkCycle) * 0.5;
+            this.legR.rotation.x = Math.sin(this.walkCycle + Math.PI) * 0.5;
+            this.armL.rotation.x = Math.sin(this.walkCycle + Math.PI) * 0.5;
+            this.armR.rotation.x = Math.sin(this.walkCycle) * 0.5;
+            this.torso.position.y = 1.2 + Math.abs(Math.sin(this.walkCycle * 2)) * 0.1;
+            this.head.position.y = 2.1 + Math.abs(Math.sin(this.walkCycle * 2)) * 0.1;
+        } else {
+            this.legL.rotation.x = 0;
+            this.legR.rotation.x = 0;
+            this.armL.rotation.x = 0;
+            this.armR.rotation.x = 0;
+        }
+
+        if (this.halo) {
+            this.halo.rotation.z += dt;
+            this.halo.position.y = 2.6 + Math.sin(performance.now() * 0.003) * 0.1;
+        }
         
         this.group.position.x = this.x;
         this.group.position.z = this.z;
@@ -491,15 +583,27 @@
       
       performAttack() {
         if (this.type === 'E') {
-          // Melee
           damagePlayer(15);
-          // Lunge animation
-          this.group.position.y += 0.5;
-          setTimeout(() => { if (this.state!=='DEAD') this.group.position.y -= 0.5; }, 100);
+          this.armL.rotation.x = -Math.PI/2;
+          this.armR.rotation.x = -Math.PI/2;
+          setTimeout(() => { 
+              if (this.state!=='DEAD') {
+                  this.armL.rotation.x = 0;
+                  this.armR.rotation.x = 0;
+              }
+          }, 200);
         } else {
-          // Shoot fireball
           let dir = new THREE.Vector3(camera.position.x - this.x, (camera.position.y - 0.5) - 1, camera.position.z - this.z).normalize();
-          projectiles.push(new Projectile(this.x, 1, this.z, dir));
+          projectiles.push(new Projectile(this.x, 1.5, this.z, dir));
+          // Attack animation
+          this.armL.rotation.x = -Math.PI/3;
+          this.armR.rotation.x = -Math.PI/3;
+          setTimeout(() => {
+              if (this.state!=='DEAD') {
+                  this.armL.rotation.x = 0;
+                  this.armR.rotation.x = 0;
+              }
+          }, 300);
         }
       }
     }
@@ -726,36 +830,77 @@
       let wType = chosenWeapon.type;
       
       if (wType === 'pistol') {
-        const matDark = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5, metalness: 0.8 });
-        const matGrip = new THREE.MeshStandardMaterial({ color: 0x111111 });
-        let barrel = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.6), matDark);
-        barrel.position.set(0, 0, -0.3);
-        let grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.1), matGrip);
-        grip.position.set(0, -0.15, 0.1);
-        weaponGroup.add(barrel, grip);
-        weaponGroup.position.set(0.25, -0.3, -0.4);
+        const matDark = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7, metalness: 0.5 });
+        const matSilver = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, metalness: 0.8 });
+        const matGrip = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+        
+        let slide = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.6), matSilver);
+        slide.position.set(0, 0, -0.3);
+        
+        let frame = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.65), matDark);
+        frame.position.set(0, -0.1, -0.3);
+        
+        let grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.35, 0.15), matGrip);
+        grip.rotation.x = Math.PI * 0.1;
+        grip.position.set(0, -0.25, -0.05);
+
+        let sight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.05), matDark);
+        sight.position.set(0, 0.08, -0.55);
+
+        let triggerGuard = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.015, 8, 16, Math.PI), matDark);
+        triggerGuard.rotation.y = Math.PI / 2;
+        triggerGuard.position.set(0, -0.15, -0.15);
+        
+        weaponGroup.add(slide, frame, grip, sight, triggerGuard);
+        weaponGroup.position.set(0.3, -0.4, -0.5);
 
       } else if (wType === 'shotgun') {
-        const matDark = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
-        const matWood = new THREE.MeshStandardMaterial({ color: 0x4a2a1a, roughness: 0.9 });
-        let barrel1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 8), matDark);
-        barrel1.rotation.x = Math.PI/2; barrel1.position.set(-0.05, 0, -0.3);
-        let barrel2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 8), matDark);
-        barrel2.rotation.x = Math.PI/2; barrel2.position.set(0.05, 0, -0.3);
-        let grip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.15, 0.4), matWood);
-        grip.position.set(0, -0.05, 0.2);
-        weaponGroup.add(barrel1, barrel2, grip);
-        weaponGroup.position.set(0.2, -0.3, -0.5);
+        const matDark = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+        const matMetal = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.5, metalness: 0.8 });
+        const matWood = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.9 });
+        
+        let barrel1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 12), matMetal);
+        barrel1.rotation.x = Math.PI/2; barrel1.position.set(-0.05, 0, -0.4);
+        
+        let barrel2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 12), matMetal);
+        barrel2.rotation.x = Math.PI/2; barrel2.position.set(0.05, 0, -0.4);
+
+        let receiver = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.15, 0.3), matDark);
+        receiver.position.set(0, 0, 0.1);
+        
+        let pump = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.3), matWood);
+        pump.position.set(0, -0.05, -0.2);
+
+        let stock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.4), matWood);
+        stock.position.set(0, -0.1, 0.4);
+
+        weaponGroup.add(barrel1, barrel2, receiver, pump, stock);
+        weaponGroup.position.set(0.3, -0.4, -0.6);
 
       } else if (wType === 'plasma') {
-        const matBody = new THREE.MeshStandardMaterial({ color: 0x444455, roughness: 0.3, metalness: 0.6 });
-        const matGlow = new THREE.MeshBasicMaterial({ color: 0x0088ff });
-        let body = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.7), matBody);
-        body.position.set(0, 0, -0.2);
-        let core = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 8), matGlow);
-        core.rotation.x = Math.PI/2; core.position.set(0, 0.1, -0.2);
-        weaponGroup.add(body, core);
-        weaponGroup.position.set(0.25, -0.3, -0.4);
+        const matBody = new THREE.MeshStandardMaterial({ color: 0x333344, roughness: 0.4, metalness: 0.7 });
+        const matGlow = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+        const matDark = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+        
+        let body = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.25, 0.7), matBody);
+        body.position.set(0, 0, -0.3);
+        
+        let core = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.65, 12), matGlow);
+        core.rotation.x = Math.PI/2; core.position.set(0, 0.15, -0.3);
+
+        let rings = new THREE.Group();
+        for(let i=0; i<4; i++) {
+            let ring = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 8, 16), matDark);
+            ring.position.set(0, 0.15, -0.1 - i*0.15);
+            rings.add(ring);
+        }
+
+        let grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.15), matDark);
+        grip.rotation.x = Math.PI * 0.1;
+        grip.position.set(0, -0.2, -0.05);
+        
+        weaponGroup.add(body, core, rings, grip);
+        weaponGroup.position.set(0.3, -0.4, -0.5);
       }
     }
 
@@ -763,6 +908,99 @@
     //  INPUT & RAYCASTING
     // ═══════════════════════════════════════════
     function setupInputs() {
+      // Touch Controls Setup
+      if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+        document.getElementById('touch-controls').classList.remove('hidden');
+      }
+
+      const joyZone = document.getElementById('joystick-zone');
+      const joyKnob = document.getElementById('joystick-knob');
+      const lookZone = document.getElementById('look-zone');
+      const btnJump = document.getElementById('btn-jump');
+      const btnShoot = document.getElementById('btn-shoot');
+
+      let joyCenter = { x: 0, y: 0 };
+      
+      joyZone.addEventListener('touchstart', e => {
+        e.preventDefault();
+        let t = e.changedTouches[0];
+        moveTouchId = t.identifier;
+        let rect = joyZone.getBoundingClientRect();
+        joyCenter = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+        joyKnob.style.display = 'block';
+        updateJoystick(t);
+      }, {passive: false});
+
+      joyZone.addEventListener('touchmove', e => {
+        e.preventDefault();
+        for(let t of e.changedTouches) {
+          if (t.identifier === moveTouchId) updateJoystick(t);
+        }
+      }, {passive: false});
+
+      function stopJoystick(e) {
+        for(let t of e.changedTouches) {
+          if (t.identifier === moveTouchId) {
+            moveTouchId = null;
+            joyKnob.style.display = 'none';
+            touchMove = { x: 0, y: 0 };
+          }
+        }
+      }
+      joyZone.addEventListener('touchend', stopJoystick);
+      joyZone.addEventListener('touchcancel', stopJoystick);
+
+      function updateJoystick(t) {
+        let dx = t.clientX - joyCenter.x;
+        let dy = t.clientY - joyCenter.y;
+        let dist = Math.hypot(dx, dy);
+        let maxR = 50;
+        if (dist > maxR) { dx = dx/dist*maxR; dy = dy/dist*maxR; }
+        joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(50% + ${dy}px))`;
+        touchMove.x = dx / maxR;
+        touchMove.y = dy / maxR;
+      }
+
+      let lastLook = { x: 0, y: 0 };
+      lookZone.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (lookTouchId === null) {
+          let t = e.changedTouches[0];
+          lookTouchId = t.identifier;
+          lastLook = { x: t.clientX, y: t.clientY };
+        }
+      }, {passive: false});
+
+      lookZone.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if (gameState !== 'PLAYING') return;
+        for(let t of e.changedTouches) {
+          if (t.identifier === lookTouchId) {
+            let dx = t.clientX - lastLook.x;
+            let dy = t.clientY - lastLook.y;
+            lastLook = { x: t.clientX, y: t.clientY };
+            
+            let sens = parseFloat(document.getElementById('sens').value) * 0.005;
+            yaw -= dx * sens;
+            pitch -= dy * sens;
+            pitch = Math.max(-1.4, Math.min(1.4, pitch));
+          }
+        }
+      }, {passive: false});
+
+      function stopLook(e) {
+        for(let t of e.changedTouches) {
+          if (t.identifier === lookTouchId) lookTouchId = null;
+        }
+      }
+      lookZone.addEventListener('touchend', stopLook);
+      lookZone.addEventListener('touchcancel', stopLook);
+
+      btnJump.addEventListener('touchstart', e => { e.preventDefault(); if(onGround && gameState === 'PLAYING') velY = JUMP_SPEED; });
+      btnShoot.addEventListener('touchstart', e => { e.preventDefault(); isTouchShooting = true; });
+      btnShoot.addEventListener('touchend', e => { e.preventDefault(); isTouchShooting = false; });
+      btnShoot.addEventListener('touchcancel', e => { e.preventDefault(); isTouchShooting = false; });
+
       document.addEventListener('keydown', e => {
         keys[e.code] = true;
         if (e.code === 'Tab' || e.code === 'Escape') {
@@ -956,6 +1194,11 @@
       if (keys['KeyA']) { dx -= cosY; dz += sinY; }
       if (keys['KeyD']) { dx += cosY; dz -= sinY; }
       
+      if (touchMove.y < -0.1) { dx -= sinY * -touchMove.y; dz -= cosY * -touchMove.y; }
+      if (touchMove.y > 0.1) { dx += sinY * touchMove.y; dz += cosY * touchMove.y; }
+      if (touchMove.x < -0.1) { dx -= cosY * -touchMove.x; dz += sinY * -touchMove.x; }
+      if (touchMove.x > 0.1) { dx += cosY * touchMove.x; dz -= sinY * touchMove.x; }
+      
       let len = Math.hypot(dx, dz);
       if (len > 0) {
         dx = (dx/len) * MOVE_SPEED * dt;
@@ -989,6 +1232,9 @@
       // Apply Rotations
       camera.rotation.y = yaw;
       camera.rotation.x = pitch;
+
+      // Touch Shooting
+      if (gameState === 'PLAYING' && isTouchShooting) fireWeapon();
 
       // Weapon Sway & Recoil
       if (len > 0 && onGround) bobTime += dt * 10;
