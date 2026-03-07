@@ -230,6 +230,8 @@
     let isDead = false;
     let particles = [];
     let screenShake = 0;
+    let recoilKick = 0; // Camera recoil (pitch)
+    let curSpread = 0;  // Current accuracy spread
 
     let weaponGroup, muzzleLight, gunPivot;
     let bobTime = 0, recoilY = 0, recoilZ = 0;
@@ -765,8 +767,16 @@
       for(let r=0; r<size; r++) { map.push(new Array(size).fill('#')); }
       
       // Simple room carving
-      let cx = 1, cz = 1;
-      map[cz][cx] = 'P'; // Start
+      let cx = 2, cz = 2; // Move in slightly from edge
+      map[cz][cx] = 'P'; // Start position
+
+      // Carve a starting room
+      for(let r=1; r<4; r++) {
+        for(let c=1; c<4; c++) {
+          map[r][c] = '.';
+        }
+      }
+      map[cz][cx] = 'P';
       
       for(let i=0; i<size*3; i++){
         let w = 3 + Math.floor(Math.random()*4);
@@ -1190,7 +1200,11 @@
     function fireWeapon() {
       let wParams = chosenWeapon;
 
-      if (!canShoot || ammo < wParams.ammoUse) return;
+      if (ammo < wParams.ammoUse) {
+          logAction("НЕТ ПАТРОНОВ!", "#ff4444");
+          return;
+      }
+      if (!canShoot) return;
       canShoot = false;
       ammo -= wParams.ammoUse;
       updateHUD();
@@ -1201,7 +1215,12 @@
       else if (wParams.type === 'plasma') sfx.shootPlasma();
       else if (wParams.type === 'bfg') sfx.shootBfg();
 
-      // Recoil
+      // Recoil & Spread calc
+      let kickAmt = 0.05;
+      if (wParams.type === 'shotgun') kickAmt = 0.15;
+      if (wParams.type === 'bfg') kickAmt = 0.3;
+      recoilKick += kickAmt;
+      
       recoilY += (wParams.type === 'shotgun' ? 0.15 : 0.05); 
       recoilZ += (wParams.type === 'shotgun' ? 0.2 : 0.1);
       
@@ -1213,8 +1232,10 @@
       
       setTimeout(() => { canShoot = true; }, wParams.fireRate); // Fire rate
 
-      // Hitscan Raycast
-      raycaster.setFromCamera({x:0, y:0}, camera);
+      // Hitscan Raycast with Spread
+      let spreadX = (Math.random()-0.5) * curSpread;
+      let spreadY = (Math.random()-0.5) * curSpread;
+      raycaster.setFromCamera({x: spreadX, y: spreadY}, camera);
       let enemyMeshes = [];
       enemies.forEach(e => {
         if (e.state !== 'DEAD') {
@@ -1272,7 +1293,9 @@
     // ═══════════════════════════════════════════
     function updateHUD() {
       document.getElementById('hp-val').innerText = Math.max(0, myHealth);
-      document.getElementById('ammo-val').innerText = ammo;
+      const amVal = document.getElementById('ammo-val');
+      amVal.innerText = ammo;
+      amVal.style.color = ammo < 10 ? "#ff4444" : "#fff";
     }
 
     function logAction(msg, color="#fff") {
@@ -1340,6 +1363,10 @@
       if (gameState !== 'PLAYING') return;
 
       // -- Player Movement --
+      let isSprinting = keys['ShiftLeft'] || keys['ShiftRight'];
+      let speedMult = isSprinting ? 1.6 : 1.0;
+      let currentMoveSpeed = MOVE_SPEED * speedMult;
+
       let sinY = Math.sin(yaw), cosY = Math.cos(yaw);
       let dx = 0, dz = 0;
       if (keys['KeyW']) { dx -= sinY; dz -= cosY; }
@@ -1354,8 +1381,8 @@
       
       let len = Math.hypot(dx, dz);
       if (len > 0) {
-        dx = (dx/len) * MOVE_SPEED * dt;
-        dz = (dz/len) * MOVE_SPEED * dt;
+        dx = (dx/len) * currentMoveSpeed * dt;
+        dz = (dz/len) * currentMoveSpeed * dt;
       }
 
       // X Collision
@@ -1384,7 +1411,15 @@
 
       // Apply Rotations
       camera.rotation.y = yaw;
-      camera.rotation.x = pitch;
+      camera.rotation.x = pitch + recoilKick;
+      
+      // Recoil & Spread Recovery
+      recoilKick *= 0.85;
+      if (recoilKick < 0.001) recoilKick = 0;
+      
+      let targetSpread = 0.05; // base spread
+      if (len > 0) targetSpread = isSprinting ? 0.25 : 0.12;
+      curSpread += (targetSpread - curSpread) * dt * 10;
 
       // Screen Shake
       if (screenShake > 0) {
@@ -1398,7 +1433,7 @@
       if (gameState === 'PLAYING' && isTouchShooting) fireWeapon();
 
       // Weapon Sway & Recoil
-      if (len > 0 && onGround) bobTime += dt * 10;
+      if (len > 0 && onGround) bobTime += dt * 10 * speedMult;
       let bobX = Math.sin(bobTime) * 0.02;
       let bobY = Math.abs(Math.cos(bobTime)) * 0.015;
       
