@@ -126,6 +126,10 @@
         <h3>ПЛАЗМА</h3>
         <p>Урон: 22<br>Темп: 120мс<br>Расход: 1</p>
       </div>
+      <div class="weapon-card" onclick="selectWeapon('bfg', this)">
+        <h3>BFG-9000</h3>
+        <p>Урон: 500+<br>Темп: 1500мс<br>Расход: 40</p>
+      </div>
     </div>
     <div class="text-box" style="font-size: 0.9rem; margin-top: -10px;">
       Управление: WASD - Ходьба, SPACE - Прыжок, Мышь - Огонь<br>
@@ -222,8 +226,10 @@
     let maxHealth = 100;
     let myHealth = 100;
     let ammo = 50;
-    let maxAmmo = 100;
+    let maxAmmo = 200;
     let isDead = false;
+    let particles = [];
+    let screenShake = 0;
 
     let weaponGroup, muzzleLight, gunPivot;
     let bobTime = 0, recoilY = 0, recoilZ = 0;
@@ -233,7 +239,8 @@
     const WEAPON_DEFS = {
       'pistol': { type: 'pistol', damage: 34, fireRate: 400, ammoUse: 1 },
       'shotgun': { type: 'shotgun', damage: 90, fireRate: 800, ammoUse: 2 },
-      'plasma': { type: 'plasma', damage: 22, fireRate: 120, ammoUse: 1 }
+      'plasma': { type: 'plasma', damage: 22, fireRate: 120, ammoUse: 1 },
+      'bfg': { type: 'bfg', damage: 500, fireRate: 1500, ammoUse: 40 }
     };
     let chosenWeapon = WEAPON_DEFS['pistol']; // default
 
@@ -343,6 +350,7 @@
       enemyHit() { this.play(200, 'sawtooth', 0.1, 0.4, 100); },
       enemyDeath() { this.play(100, 'sawtooth', 0.5, 0.6, -80); },
       playerHurt() { this.play(150, 'square', 0.2, 0.7, -100); },
+      shootBfg() { this.play(100, 'sine', 0.5, 1.0, 300); this.play(500, 'square', 0.8, 0.5, -400); },
       pickupHealth() { this.play(400, 'sine', 0.3, 0.4, 400); this.play(600, 'sine', 0.4, 0.4, 600); },
       pickupAmmo() { this.play(600, 'square', 0.1, 0.3, 0); this.play(800, 'square', 0.15, 0.3, 0); }
     };
@@ -409,10 +417,11 @@
     // Enemies
     class Enemy {
       constructor(type, x, z) {
-        this.type = type; // 'E' (melee) or 'S' (shooter)
+        this.type = type; // 'E' (melee), 'S' (shooter), 'B' (boss)
         this.x = x; this.z = z;
-        this.health = type === 'E' ? 60 : 40;
-        this.speed = type === 'E' ? 4 : 2;
+        this.isBoss = type === 'B';
+        this.health = this.isBoss ? 800 : (type === 'E' ? 60 : 40);
+        this.speed = this.isBoss ? 3 : (type === 'E' ? 4 : 2);
         this.state = 'IDLE'; // IDLE, CHASE, ATTACK, DEAD
         this.attackTimer = 0;
         this.walkCycle = Math.random() * Math.PI * 2;
@@ -422,7 +431,11 @@
         
         let colorBody = type === 'E' ? 0x992222 : 0xaa00ff;
         let colorSkin = type === 'E' ? 0xffccaa : 0xddbbff;
-        let colorEye = type === 'E' ? 0xffea00 : 0x00ffff;
+        let colorEye = this.isBoss ? 0xff0000 : (type === 'E' ? 0xffea00 : 0x00ffff);
+        
+        if (this.isBoss) {
+            this.group.scale.set(2.5, 2.5, 2.5);
+        }
         
         let matBody = new THREE.MeshStandardMaterial({ color: colorBody, roughness: 0.8 });
         let matSkin = new THREE.MeshStandardMaterial({ color: colorSkin, roughness: 0.6 });
@@ -496,6 +509,7 @@
         }, 100);
         this.state = 'CHASE'; // Aggro on hit
         sfx.enemyHit();
+        spawnBlood(this.x, 1.5, this.z);
         
         if (this.health <= 0) {
           this.state = 'DEAD';
@@ -507,7 +521,8 @@
           this.group.rotation.x = -Math.PI/2;
           this.group.position.y = 0.4;
           sfx.enemyDeath();
-          logAction("Демон убит!", "#ff4444");
+          logAction(this.isBoss ? "ВЕРХОВНЫЙ ДЕМОН ПОВЕРЖЕН!" : "Демон убит!", "#ff4444");
+          if (this.isBoss) setTimeout(winGame, 2000);
         }
       }
       
@@ -594,7 +609,16 @@
           }, 200);
         } else {
           let dir = new THREE.Vector3(camera.position.x - this.x, (camera.position.y - 0.5) - 1, camera.position.z - this.z).normalize();
-          projectiles.push(new Projectile(this.x, 1.5, this.z, dir));
+          if (this.isBoss) {
+              // Rapid fire
+              for(let i=0; i<3; i++) {
+                  setTimeout(() => {
+                      if (this.state !== 'DEAD') projectiles.push(new Projectile(this.x, 2, this.z, dir.clone().add(new THREE.Vector3((Math.random()-0.5)*0.2, 0, (Math.random()-0.5)*0.2)).normalize()));
+                  }, i * 200);
+              }
+          } else {
+              projectiles.push(new Projectile(this.x, 1.5, this.z, dir));
+          }
           // Attack animation
           this.armL.rotation.x = -Math.PI/3;
           this.armR.rotation.x = -Math.PI/3;
@@ -608,38 +632,103 @@
       }
     }
 
-    // Fireballs
+    // Fireballs & BFG Orbs
     class Projectile {
-      constructor(x, y, z, dir) {
+      constructor(x, y, z, dir, type='enemy') {
+        let isBFG = type === 'bfg';
+        this.type = type;
         this.mesh = new THREE.Mesh(
-          new THREE.SphereGeometry(0.3, 8, 8),
-          new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+          new THREE.SphereGeometry(isBFG ? 0.8 : 0.3, 8, 8),
+          new THREE.MeshBasicMaterial({ color: isBFG ? 0x00ff00 : 0xffaa00 })
         );
         this.mesh.position.set(x, y, z);
         this.dir = dir;
-        this.speed = 20;
+        this.speed = isBFG ? 15 : 20;
         this.active = true;
         scene.add(this.mesh);
+        
+        if (isBFG) {
+          this.light = new THREE.PointLight(0x00ff00, 2, 10);
+          this.mesh.add(this.light);
+        }
       }
       update(dt) {
         if (!this.active) return;
         this.mesh.position.addScaledVector(this.dir, this.speed * dt);
         
-        // Check player hit
-        if (this.mesh.position.distanceTo(camera.position) < 1.5) {
-          damagePlayer(20);
-          this.destroy();
-          return;
+        if (this.type === 'enemy') {
+          if (this.mesh.position.distanceTo(camera.position) < 1.5) {
+            damagePlayer(20);
+            this.destroy();
+            return;
+          }
+        } else if (this.type === 'bfg') {
+          // Check enemy hits
+          for(let e of enemies) {
+            if (e.state !== 'DEAD' && this.mesh.position.distanceTo(e.group.position) < 2) {
+              this.explode();
+              return;
+            }
+          }
         }
         
         // Check wall hit
         if (isWallGrid(this.mesh.position.x, this.mesh.position.z)) {
-          this.destroy();
+          if (this.type === 'bfg') this.explode();
+          else this.destroy();
         }
+      }
+      explode() {
+        if (!this.active) return;
+        screenShake = 0.8;
+        spawnBlood(this.mesh.position.x, this.mesh.position.y, this.mesh.position.z, 20);
+        // AOE Damage
+        for(let e of enemies) {
+          if (e.state !== 'DEAD') {
+            let d = this.mesh.position.distanceTo(e.group.position);
+            if (d < 8) e.takeDamage(500 * (1 - d/8));
+          }
+        }
+        this.destroy();
       }
       destroy() {
         this.active = false;
         scene.remove(this.mesh);
+      }
+    }
+
+    // Particles (Blood)
+    class Particle {
+      constructor(x, y, z, color, size=0.1) {
+        this.mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(size, size, size),
+          new THREE.MeshBasicMaterial({ color: color })
+        );
+        this.mesh.position.set(x, y, z);
+        this.vel = new THREE.Vector3(
+          (Math.random() - 0.5) * 5,
+          (Math.random() * 5),
+          (Math.random() - 0.5) * 5
+        );
+        this.life = 1.0;
+        this.active = true;
+        scene.add(this.mesh);
+      }
+      update(dt) {
+        this.vel.y += GRAVITY * dt * 0.5;
+        this.mesh.position.addScaledVector(this.vel, dt);
+        this.life -= dt * 2;
+        if (this.life <= 0) this.destroy();
+      }
+      destroy() {
+        this.active = false;
+        scene.remove(this.mesh);
+      }
+    }
+
+    function spawnBlood(x, y, z, count=8) {
+      for(let i=0; i<count; i++) {
+        particles.push(new Particle(x, y, z, 0xff0000, 0.1 + Math.random()*0.1));
       }
     }
 
@@ -759,6 +848,29 @@
       // Add lighting
       const ambient = new THREE.AmbientLight(lvl.ambient);
       geometryGroup.add(ambient);
+
+      // BOSS LEVEL CUSTOM MAP (Level 20)
+      if (index === 19) {
+          lvl.name = "УРОВЕНЬ 20: ЛОГОВО КИБЕР-ДЕМОНА";
+          lvl.map = [
+              "#####################",
+              "#...................#",
+              "#...................#",
+              "#.###...........###.#",
+              "#.H.#...........#.A.#",
+              "#.###...........###.#",
+              "#.........B.........#",
+              "#...................#",
+              "#.###...........###.#",
+              "#.A.#...........#.H.#",
+              "#.###...........###.#",
+              "#...................#",
+              "#.........P.........#",
+              "#####################"
+          ];
+          lvl.ambient = 0xff0000;
+          lvl.fog = 0x220000;
+      }
       
       for (let row = 0; row < mapGrid.length; row++) {
         for (let col = 0; col < mapGrid[row].length; col++) {
@@ -784,7 +896,7 @@
             if (char === 'P') {
               camera.position.set(cx, PLAYER_H, cz);
               yaw = 0; pitch = 0;
-            } else if (char === 'E' || char === 'S') {
+            } else if (char === 'E' || char === 'S' || char === 'B') {
               enemies.push(new Enemy(char, cx, cz));
             } else if (char === 'H' || char === 'A') {
               pickups.push(new Pickup(char, cx, cz));
@@ -901,6 +1013,26 @@
         
         weaponGroup.add(body, core, rings, grip);
         weaponGroup.position.set(0.3, -0.4, -0.5);
+
+      } else if (wType === 'bfg') {
+        const matBody = new THREE.MeshStandardMaterial({ color: 0x113311, roughness: 0.2, metalness: 0.8 });
+        const matGlow = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const matDark = new THREE.MeshStandardMaterial({ color: 0x050505 });
+        
+        let body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.8), matBody);
+        body.position.set(0, 0, -0.2);
+        
+        let nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.2, 16), matDark);
+        nozzle.rotation.x = Math.PI/2; nozzle.position.set(0, 0, -0.6);
+        
+        let core = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), matGlow);
+        core.position.set(0, 0, -0.5);
+        
+        let grip = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.3, 0.2), matDark);
+        grip.position.set(0, -0.25, 0.1);
+        
+        weaponGroup.add(body, nozzle, core, grip);
+        weaponGroup.position.set(0.35, -0.4, -0.5);
       }
     }
 
@@ -1061,10 +1193,13 @@
       if (wParams.type === 'pistol') sfx.shootPistol();
       else if (wParams.type === 'shotgun') sfx.shootShotgun();
       else if (wParams.type === 'plasma') sfx.shootPlasma();
+      else if (wParams.type === 'bfg') sfx.shootBfg();
 
       // Recoil
       recoilY += (wParams.type === 'shotgun' ? 0.15 : 0.05); 
       recoilZ += (wParams.type === 'shotgun' ? 0.2 : 0.1);
+      
+      if (wParams.type === 'shotgun') screenShake = 0.2;
       
       muzzleLight.color.setHex(wParams.type === 'plasma' ? 0x0088ff : 0xffaa00);
       muzzleLight.intensity = wParams.type === 'plasma' ? 3 : 5;
@@ -1093,6 +1228,11 @@
         hits.forEach((h, idx) => {
           if (h.distance <= maxDist && idx < 3) h.object.userData.enemyRef.takeDamage(wParams.damage / (idx+1));
         });
+      } else if (wParams.type === 'bfg') {
+        // Shoot BFG projectile
+        let bfgDir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation).normalize();
+        projectiles.push(new Projectile(camera.position.x, camera.position.y - 0.2, camera.position.z, bfgDir, 'bfg'));
+        screenShake = 0.4;
       } else {
         // Pistol / Plasma hits first target
         let hitEnemy = hits.find(h => h.distance <= maxDist);
@@ -1105,6 +1245,7 @@
       myHealth -= amount;
       sfx.playerHurt();
       updateHUD();
+      screenShake = 0.5;
       let flash = document.getElementById('damage-flash');
       flash.style.opacity = '1';
       setTimeout(() => { flash.style.opacity = '0'; }, 150);
@@ -1233,6 +1374,14 @@
       camera.rotation.y = yaw;
       camera.rotation.x = pitch;
 
+      // Screen Shake
+      if (screenShake > 0) {
+        camera.position.x += (Math.random() - 0.5) * screenShake;
+        camera.position.y += (Math.random() - 0.5) * screenShake;
+        screenShake *= 0.9;
+        if (screenShake < 0.01) screenShake = 0;
+      }
+
       // Touch Shooting
       if (gameState === 'PLAYING' && isTouchShooting) fireWeapon();
 
@@ -1254,10 +1403,12 @@
       enemies.forEach(e => e.update(dt));
       pickups.forEach(p => p.update(dt));
       projectiles.forEach(p => p.update(dt));
+      particles.forEach(p => p.update(dt));
       
       // Clean up dead projectiles / collected pickups
       projectiles = projectiles.filter(p => p.active);
       pickups = pickups.filter(p => p.active);
+      particles = particles.filter(p => p.active);
 
       // Check Exit Area
       if (exitZone && Math.hypot(camera.position.x - exitZone.x, camera.position.z - exitZone.z) < 2) {
