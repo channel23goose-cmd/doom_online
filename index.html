@@ -608,18 +608,46 @@
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
     });
 
+    function createNoiseTexture(size = 64) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.createImageData(size, size);
+      for (let i = 0; i < imgData.data.length; i += 4) {
+        const v = 120 + Math.random() * 40;
+        imgData.data[i] = v; imgData.data[i + 1] = v; imgData.data[i + 2] = v;
+        imgData.data[i + 3] = 255;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+    const noiseTex = createNoiseTexture();
+
     const MAT_WALL = new THREE.MeshStandardMaterial({
       map: texWall,
-      roughness: 0.6,
-      metalness: 0.4
+      bumpMap: noiseTex,
+      bumpScale: 0.02,
+      roughness: 0.4,
+      metalness: 0.7,
+      emissiveMap: texWall,
+      emissive: 0xff3300,
+      emissiveIntensity: 0.5
     });
     const MAT_FLOOR = new THREE.MeshStandardMaterial({
       map: texFloor,
-      roughness: 0.8
+      bumpMap: noiseTex,
+      bumpScale: 0.03,
+      roughness: 0.7,
+      metalness: 0.3
     });
     const MAT_CEIL = new THREE.MeshStandardMaterial({
       map: texCeil,
-      roughness: 0.8
+      bumpMap: noiseTex,
+      bumpScale: 0.01,
+      roughness: 0.8,
+      metalness: 0.2
     });
 
     // Pickups
@@ -1173,6 +1201,34 @@
       const geoWall = new THREE.BoxGeometry(TS, WALL_H, TS);
       const geoFloor = new THREE.BoxGeometry(TS, 0.1, TS);
 
+      // Environment Detail Helpers
+      function addWorldDetail(parent, type, x, y, z) {
+        if (type === 'rivets') {
+          const rGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.02, 6);
+          for (let i = 0; i < 4; i++) {
+            let r = new THREE.Mesh(rGeo, MAT_WALL);
+            r.position.set(x + (i % 2 ? 1.8 : -1.8), y + (i < 2 ? 2 : -2), z + 2.01);
+            r.rotation.x = Math.PI / 2;
+            parent.add(r);
+            let r2 = r.clone(); r2.position.z -= 4.02;
+            parent.add(r2);
+          }
+        } else if (type === 'cable') {
+          const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(x - 2, y + 2.5, z - 1.9),
+            new THREE.Vector3(x, y + 2.2, z - 1.95),
+            new THREE.Vector3(x + 2, y + 2.6, z - 1.9)
+          ]);
+          const cGeo = new THREE.TubeGeometry(curve, 8, 0.05, 8, false);
+          let cable = new THREE.Mesh(cGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }));
+          parent.add(cable);
+        } else if (type === 'beam') {
+          let beam = new THREE.Mesh(new THREE.BoxGeometry(TS, 0.3, 0.3), MAT_WALL);
+          beam.position.set(x, WALL_H - 0.15, z);
+          parent.add(beam);
+        }
+      }
+
       // Add lighting
       const ambient = new THREE.AmbientLight(lvl.ambient);
       geometryGroup.add(ambient);
@@ -1212,6 +1268,8 @@
             // Apply texture tiling
             MAT_WALL.map.repeat.set(1, 1.5);
             geometryGroup.add(m);
+            if (Math.random() > 0.5) addWorldDetail(geometryGroup, 'rivets', cx, WALL_H / 2, cz);
+            if (Math.random() > 0.7) addWorldDetail(geometryGroup, 'cable', cx, WALL_H / 2, cz);
           } else {
             // Floor & Ceiling for open spaces
             let f = new THREE.Mesh(geoFloor, MAT_FLOOR);
@@ -1225,6 +1283,7 @@
             // Apply texture tiling
             MAT_CEIL.map.repeat.set(1, 1);
             geometryGroup.add(c);
+            if (Math.random() > 0.6) addWorldDetail(geometryGroup, 'beam', cx, WALL_H, cz);
 
             // Entities
             if (char === 'P') {
@@ -1258,22 +1317,6 @@
       if (gameState === 'PLAYING') setupWeapon(); // rebuild weapon if switching level
     }
 
-    function createNoiseTexture(size = 64) {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const imgData = ctx.createImageData(size, size);
-      for (let i = 0; i < imgData.data.length; i += 4) {
-        const v = 120 + Math.random() * 40;
-        imgData.data[i] = v; imgData.data[i + 1] = v; imgData.data[i + 2] = v;
-        imgData.data[i + 3] = 255;
-      }
-      ctx.putImageData(imgData, 0, 0);
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-      return tex;
-    }
-    const noiseTex = createNoiseTexture();
 
     function setupWeapon() {
       // Clean up previous weapon
