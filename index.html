@@ -467,6 +467,7 @@
     let weaponGroup, muzzleLight, gunPivot;
     let bobTime = 0, recoilY = 0, recoilZ = 0;
     let canShoot = true;
+    let portalSpawned = false; // Is the exit portal active?
 
     // Weapon Stats Configuration
     const WEAPON_DEFS = {
@@ -723,87 +724,108 @@
     // Enemies
     class Enemy {
       constructor(type, x, z) {
-        this.type = type; // 'E' (melee), 'S' (shooter), 'B' (boss)
+        this.type = type; // 'E' (melee), 'S' (shooter), 'B' (boss), 'C' (cyber-sphere), 'K' (knight-fiend)
         this.x = x; this.z = z;
         this.isBoss = type === 'B';
-        this.health = this.isBoss ? 800 : (type === 'E' ? 60 : 40);
-        this.speed = this.isBoss ? 3 : (type === 'E' ? 4 : 2);
-        this.state = 'IDLE'; // IDLE, CHASE, ATTACK, DEAD
+
+        // Stats
+        if (this.isBoss) {
+          this.health = 800; this.speed = 3;
+        } else if (type === 'C') { // Cyber-Sphere (Flying)
+          this.health = 120; this.speed = 2.5; this.y = 3.5;
+        } else if (type === 'K') { // Knight-Fiend (Melee, Fast, Tank)
+          this.health = 150; this.speed = 5.5; this.y = 0;
+        } else {
+          this.health = type === 'E' ? 60 : 40;
+          this.speed = type === 'E' ? 4 : 2;
+          this.y = 0;
+        }
+
+        this.state = 'IDLE';
         this.attackTimer = 0;
         this.walkCycle = Math.random() * Math.PI * 2;
 
         this.group = new THREE.Group();
-        this.group.position.set(x, 0, z);
+        this.group.position.set(x, this.y || 0, z);
 
-        let colorBody = type === 'E' ? 0x992222 : 0xaa00ff;
-        let colorSkin = type === 'E' ? 0xffccaa : 0xddbbff;
-        let colorEye = this.isBoss ? 0xff0000 : (type === 'E' ? 0xffea00 : 0x00ffff);
+        let colorBody = 0x992222;
+        if (type === 'S') colorBody = 0xaa00ff;
+        if (type === 'C') colorBody = 0xdd0000;
+        if (type === 'K') colorBody = 0x664444;
 
-        if (this.isBoss) {
-          this.group.scale.set(2.5, 2.5, 2.5);
-        }
+        if (this.isBoss) this.group.scale.set(2.5, 2.5, 2.5);
 
         const matBody = new THREE.MeshStandardMaterial({
-          map: texDemon,
-          emissiveMap: texDemon,
-          color: colorBody,
-          roughness: 0.6,
-          emissive: 0xff0000,
-          emissiveIntensity: 0.3
+          map: texDemon, emissiveMap: texDemon, color: colorBody,
+          roughness: 0.6, emissive: 0xff0000, emissiveIntensity: 0.3
         });
         const matSkin = new THREE.MeshStandardMaterial({
-          map: texDemon,
-          emissiveMap: texDemon,
-          color: colorSkin,
-          roughness: 0.4,
-          emissive: 0xff4400,
-          emissiveIntensity: 0.2
+          map: texDemon, emissiveMap: texDemon, color: 0xffccaa,
+          roughness: 0.4, emissive: 0xff4400, emissiveIntensity: 0.2
         });
-        const matEye = new THREE.MeshBasicMaterial({ color: colorEye });
+        const matEye = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+        if (type === 'C') matEye.color.setHex(0xffffff);
 
-        // Torso
-        this.torso = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.6), matBody);
-        this.torso.position.y = 1.2;
-
-        // Head
-        this.head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), matSkin);
-        this.head.position.y = 2.1;
-
-        // Eyes
-        this.eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.1), matEye);
-        this.eyeL.position.set(-0.15, 0.1, 0.31);
-        this.eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.1), matEye);
-        this.eyeR.position.set(0.15, 0.1, 0.31);
-        this.head.add(this.eyeL, this.eyeR);
-
-        // Limbs
-        this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.3), matSkin);
-        this.armL.position.set(-0.65, 1.3, 0);
-        this.armR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.3), matSkin);
-        this.armR.position.set(0.65, 1.3, 0);
-
-        this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), matBody);
-        this.legL.position.set(-0.25, 0.4, 0);
-        this.legR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), matBody);
-        this.legR.position.set(0.25, 0.4, 0);
-
-        // Halo/Horns depending on type
-        if (type === 'S') {
-          this.halo = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 8, 16), matEye);
-          this.halo.position.y = 2.6;
-          this.halo.rotation.x = Math.PI / 2;
-          this.group.add(this.halo);
+        if (type === 'C') {
+          // Cyber-Sphere Visuals: A hovering red sphere with a giant eye
+          let sprite = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), matBody);
+          let eye = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), matEye);
+          eye.position.set(0, 0, 0.6);
+          this.group.add(sprite, eye);
+          // Add some mechanical bits
+          let base = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 0.3, 8), matSkin);
+          base.position.y = -0.7; this.group.add(base);
+        } else if (type === 'K') {
+          // Knight-Fiend: Heavy, 4-legged beast
+          this.torso = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 1.8), matBody);
+          this.torso.position.y = 0.8;
+          this.group.add(this.torso);
+          // 4 legs
+          const legGeo = new THREE.BoxGeometry(0.4, 0.8, 0.4);
+          for (let i = 0; i < 4; i++) {
+            let l = new THREE.Mesh(legGeo, matBody);
+            l.position.set(i % 2 ? 0.5 : -0.5, 0.4, i < 2 ? 0.6 : -0.6);
+            this.group.add(l);
+          }
+          let head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), matSkin);
+          head.position.set(0, 1.2, 0.9); this.group.add(head);
         } else {
-          let hornL = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 4), matSkin);
-          hornL.position.set(-0.2, 2.5, 0);
-          hornL.rotation.z = -0.2;
-          let hornR = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 4), matSkin);
-          hornR.position.set(0.2, 2.5, 0);
-          hornR.rotation.z = 0.2;
-          this.group.add(hornL, hornR);
-        }
+          // Standard Humanoid (E, S, B)
+          // Torso
+          this.torso = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.6), matBody);
+          this.torso.position.y = 1.2;
+          // Head
+          this.head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), matSkin);
+          this.head.position.y = 2.1;
+          // Eyes
+          this.eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.1), matEye);
+          this.eyeL.position.set(-0.15, 0.1, 0.31);
+          this.eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.1), matEye);
+          this.eyeR.position.set(0.15, 0.1, 0.31);
+          this.head.add(this.eyeL, this.eyeR);
+          // Limbs
+          this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.3), matSkin);
+          this.armL.position.set(-0.65, 1.3, 0);
+          this.armR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.3), matSkin);
+          this.armR.position.set(0.65, 1.3, 0);
+          this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), matBody);
+          this.legL.position.set(-0.25, 0.4, 0);
+          this.legR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), matBody);
+          this.legR.position.set(0.25, 0.4, 0);
 
-        this.group.add(this.torso, this.head, this.armL, this.armR, this.legL, this.legR);
+          if (type === 'S') {
+            this.halo = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 8, 16), matEye);
+            this.halo.position.y = 2.6; this.halo.rotation.x = Math.PI / 2;
+            this.group.add(this.halo);
+          } else {
+            let hornL = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 4), matSkin);
+            hornL.position.set(-0.2, 2.5, 0); hornL.rotation.z = -0.2;
+            let hornR = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 4), matSkin);
+            hornR.position.set(0.2, 2.5, 0); hornR.rotation.z = 0.2;
+            this.group.add(hornL, hornR);
+          }
+          this.group.add(this.torso, this.head, this.armL, this.armR, this.legL, this.legR);
+        }
 
         // Raycast targets (hit detection)
         this.group.userData.isEnemy = true;
@@ -881,11 +903,13 @@
         }
 
         if (this.state === 'ATTACK') {
-          if (dist > (this.type === 'E' ? 2.5 : 15) || !checkLineOfSight(this.x, 1, this.z, px, PLAYER_H, pz)) {
+          let attackDist = (this.type === 'E' || this.type === 'K') ? 2.5 : 15;
+          if (dist > attackDist || !checkLineOfSight(this.x, 1, this.z, px, PLAYER_H, pz)) {
             this.state = 'CHASE';
           } else {
             this.attackTimer += dt;
-            let fireRate = this.type === 'E' ? 1.0 : 2.0;
+            let fireRate = (this.type === 'E' || this.type === 'K') ? 0.8 : 1.5;
+            if (this.type === 'C') fireRate = 2.5;
             if (this.attackTimer > fireRate) {
               this.attackTimer = 0;
               this.performAttack();
@@ -909,6 +933,10 @@
           this.armR.rotation.x = 0;
         }
 
+        if (this.type === 'C') {
+          this.group.position.y = 3.0 + Math.sin(performance.now() * 0.002) * 0.5;
+        }
+
         if (this.halo) {
           this.halo.rotation.z += dt;
           this.halo.position.y = 2.6 + Math.sin(performance.now() * 0.003) * 0.1;
@@ -919,18 +947,21 @@
       }
 
       performAttack() {
-        if (this.type === 'E') {
-          damagePlayer(15);
-          this.armL.rotation.x = -Math.PI / 2;
-          this.armR.rotation.x = -Math.PI / 2;
+        if (this.type === 'E' || this.type === 'K') {
+          let dmg = this.type === 'K' ? 35 : 15;
+          damagePlayer(dmg);
+          if (this.armL) this.armL.rotation.x = -Math.PI / 2;
+          if (this.armR) this.armR.rotation.x = -Math.PI / 2;
           setTimeout(() => {
             if (this.state !== 'DEAD') {
-              this.armL.rotation.x = 0;
-              this.armR.rotation.x = 0;
+              if (this.armL) this.armL.rotation.x = 0;
+              if (this.armR) this.armR.rotation.x = 0;
             }
           }, 200);
         } else {
-          let dir = new THREE.Vector3(camera.position.x - this.x, (camera.position.y - 0.5) - 1, camera.position.z - this.z).normalize();
+          // Shooter logic (S, B, C)
+          let yOff = this.type === 'C' ? this.group.position.y : 1.5;
+          let dir = new THREE.Vector3(camera.position.x - this.x, (camera.position.y - 0.5) - yOff, camera.position.z - this.z).normalize();
           if (this.isBoss) {
             // Rapid fire
             for (let i = 0; i < 3; i++) {
@@ -939,15 +970,15 @@
               }, i * 200);
             }
           } else {
-            projectiles.push(new Projectile(this.x, 1.5, this.z, dir));
+            projectiles.push(new Projectile(this.x, yOff, this.z, dir));
           }
           // Attack animation
-          this.armL.rotation.x = -Math.PI / 3;
-          this.armR.rotation.x = -Math.PI / 3;
+          if (this.armL) this.armL.rotation.x = -Math.PI / 3;
+          if (this.armR) this.armR.rotation.x = -Math.PI / 3;
           setTimeout(() => {
             if (this.state !== 'DEAD') {
-              this.armL.rotation.x = 0;
-              this.armR.rotation.x = 0;
+              if (this.armL) this.armL.rotation.x = 0;
+              if (this.armR) this.armR.rotation.x = 0;
             }
           }, 300);
         }
@@ -1158,7 +1189,12 @@
       let enemyCount = 3 + idx * 2;
       for (let i = 0; i < enemyCount && i < openSpaces.length; i++) {
         let pt = openSpaces[i];
-        map[pt.r][pt.c] = Math.random() < 0.3 ? 'S' : 'E';
+        let r = Math.random();
+        let type = 'E';
+        if (r < 0.2) type = 'S';
+        else if (r < 0.35) type = 'C';
+        else if (r < 0.5) type = 'K';
+        map[pt.r][pt.c] = type;
       }
       for (let i = enemyCount; i < enemyCount + idx && i < openSpaces.length; i++) {
         let pt = openSpaces[i];
@@ -1309,18 +1345,13 @@
               pickups.push(new Pickup(char, cx, cz));
             } else if (char === 'X') {
               exitZone = { x: cx, z: cz };
-              let portal = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, WALL_H, 16),
-                new THREE.MeshBasicMaterial({ color: 0x0088ff, transparent: true, opacity: 0.6 }));
-              portal.position.set(cx, WALL_H / 2, cz);
-              geometryGroup.add(portal);
-              let pl = new THREE.PointLight(0x0088ff, 2, 20);
-              pl.position.set(cx, 2, cz);
-              geometryGroup.add(pl);
+              // Portal logic moved to checkVictoryCondition()
             }
           }
         }
       }
       scene.add(geometryGroup);
+      portalSpawned = false; // Reset portal state
 
       // Reset variables
       myHealth = maxHealth;
@@ -1946,6 +1977,20 @@
       document.getElementById('victory').classList.remove('hidden');
     }
 
+    function spawnPortal() {
+      if (portalSpawned) return;
+      portalSpawned = true;
+      let portal = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, WALL_H, 16),
+        new THREE.MeshBasicMaterial({ color: 0x0088ff, transparent: true, opacity: 0.6 }));
+      portal.position.set(exitZone.x, WALL_H / 2, exitZone.z);
+      geometryGroup.add(portal);
+      let pl = new THREE.PointLight(0x0088ff, 3, 20);
+      pl.position.set(exitZone.x, 2, exitZone.z);
+      geometryGroup.add(pl);
+      logAction("ПОРТАЛ ОТКРЫТ! УХОДИ!", "#00ffff");
+      sfx.play(800, 'sine', 0.8, 0.5, 200);
+    }
+
     // ═══════════════════════════════════════════
     //  MAIN LOOP
     // ═══════════════════════════════════════════
@@ -2060,8 +2105,13 @@
       pickups = pickups.filter(p => p.active);
       particles = particles.filter(p => p.active);
 
-      // Check Exit Area
-      if (exitZone && Math.hypot(camera.position.x - exitZone.x, camera.position.z - exitZone.z) < 2) {
+      // -- Victory / Portal Logic --
+      if (!portalSpawned && enemies.length > 0 && enemies.every(e => e.state === 'DEAD')) {
+        spawnPortal();
+      }
+
+      // Check Exit Area (Only if portal spawned)
+      if (portalSpawned && exitZone && Math.hypot(camera.position.x - exitZone.x, camera.position.z - exitZone.z) < 1.8) {
         loadLevel(currentLevelIndex + 1);
       }
 
