@@ -1275,148 +1275,178 @@
 
       let wType = chosenWeapon.type;
 
-      if (wType === 'pistol') {
-        const matDark = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7, metalness: 0.5 });
-        const matSilver = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, metalness: 0.8 });
-        const matGrip = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+      const loader = new THREE.TextureLoader();
 
-        let slide = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.6), matSilver);
+      if (wType === 'pistol') {
+        const texPistol = loader.load('pistol.png');
+        const matMetal = new THREE.MeshStandardMaterial({ map: texPistol, metalness: 0.8, roughness: 0.3 });
+        const matGrip = new THREE.MeshStandardMaterial({ map: texPistol, roughness: 0.9 });
+
+        let slide = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.6), matMetal);
         slide.position.set(0, 0, -0.3);
 
-        let frame = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.65), matDark);
+        let frame = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.65), matMetal);
         frame.position.set(0, -0.1, -0.3);
 
         let grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.35, 0.15), matGrip);
         grip.rotation.x = Math.PI * 0.1;
         grip.position.set(0, -0.25, -0.05);
 
-        let sight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.05), matDark);
-        sight.position.set(0, 0.08, -0.55);
+        let barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.1, 8), matMetal);
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(0, 0, -0.6);
 
-        let triggerGuard = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.015, 8, 16, Math.PI), matDark);
-        triggerGuard.rotation.y = Math.PI / 2;
-        triggerGuard.position.set(0, -0.15, -0.15);
+        let sightFront = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.04, 0.04), matMetal);
+        sightFront.position.set(0, 0.08, -0.58);
 
-        weaponGroup.add(slide, frame, grip, sight, triggerGuard);
+        let magazine = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.1, 0.14), matMetal);
+        magazine.position.set(0, -0.4, -0.05);
+
+        weaponGroup.add(slide, frame, grip, barrel, sightFront, magazine);
         weaponGroup.position.set(0.3, -0.4, -0.5);
         weaponGroup.userData.defPos = weaponGroup.position.clone();
 
       } else if (wType === 'shotgun') {
-        const matDark = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
-        const matMetal = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.5, metalness: 0.8 });
-        const matWood = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.9 });
+        const texShot = loader.load('shotgun.png');
+        const matMetal = new THREE.MeshStandardMaterial({ map: texShot, metalness: 0.7, roughness: 0.4 });
+        const matWood = new THREE.MeshStandardMaterial({ map: texShot, roughness: 0.9 });
 
-        let barrel1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 12), matMetal);
-        barrel1.rotation.x = Math.PI / 2; barrel1.position.set(-0.05, 0, -0.4);
+        let barrel1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.0, 16), matMetal);
+        barrel1.rotation.x = Math.PI / 2; barrel1.position.set(-0.04, 0, -0.45);
 
-        let barrel2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 12), matMetal);
-        barrel2.rotation.x = Math.PI / 2; barrel2.position.set(0.05, 0, -0.4);
-
-        let receiver = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.15, 0.3), matDark);
+        let receiver = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.2, 0.4), matMetal);
         receiver.position.set(0, 0, 0.1);
 
-        let pump = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.3), matWood);
-        pump.position.set(0, -0.05, -0.2);
+        let pump = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.3, 12), matWood);
+        pump.rotation.x = Math.PI / 2; pump.position.set(0, -0.08, -0.25);
 
-        let stock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.4), matWood);
-        stock.position.set(0, -0.1, 0.4);
+        let stock = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.25, 0.5), matWood);
+        stock.position.set(0, -0.12, 0.45);
 
-        weaponGroup.add(barrel1, barrel2, receiver, pump, stock);
-        weaponGroup.position.set(0.3, -0.4, -0.6);
+        let sight = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 8), matMetal);
+        sight.position.set(-0.04, 0.06, -0.9);
+
+        weaponGroup.add(barrel1, receiver, pump, stock, sight);
+        weaponGroup.position.set(0.3, -0.45, -0.6);
         weaponGroup.userData.defPos = weaponGroup.position.clone();
 
       } else if (wType === 'plasma') {
-        const matBody = new THREE.MeshStandardMaterial({ color: 0x333344, roughness: 0.4, metalness: 0.7 });
+        const matBody = new THREE.MeshStandardMaterial({ color: 0xeeeeee, metalness: 0.5, roughness: 0.2 });
         const matGlow = new THREE.MeshBasicMaterial({ color: 0x00ffff });
         const matDark = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
 
-        let body = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.25, 0.7), matBody);
+        let body = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.3, 0.8), matBody);
         body.position.set(0, 0, -0.3);
 
-        let core = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.65, 12), matGlow);
-        core.rotation.x = Math.PI / 2; core.position.set(0, 0.15, -0.3);
+        let core = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.7, 16), matGlow);
+        core.rotation.x = Math.PI / 2; core.position.set(0, 0.18, -0.3);
+
+        let ventL = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.2, 0.6), matDark);
+        ventL.position.set(-0.12, 0, -0.3);
+        let ventR = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.2, 0.6), matDark);
+        ventR.position.set(0.12, 0, -0.3);
 
         let rings = new THREE.Group();
-        for (let i = 0; i < 4; i++) {
-          let ring = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 8, 16), matDark);
-          ring.position.set(0, 0.15, -0.1 - i * 0.15);
+        for (let i = 0; i < 6; i++) {
+          let ring = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.015, 8, 24), matDark);
+          ring.position.set(0, 0.18, -0.05 - i * 0.12);
           rings.add(ring);
         }
 
-        let grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.15), matDark);
-        grip.rotation.x = Math.PI * 0.1;
-        grip.position.set(0, -0.2, -0.05);
+        let handle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.35, 0.18), matDark);
+        handle.position.set(0, -0.25, -0.1);
 
-        weaponGroup.add(body, core, rings, grip);
+        weaponGroup.add(body, core, ventL, ventR, rings, handle);
         weaponGroup.position.set(0.3, -0.4, -0.5);
         weaponGroup.userData.defPos = weaponGroup.position.clone();
 
       } else if (wType === 'bfg') {
-        const matBody = new THREE.MeshStandardMaterial({ color: 0x113311, roughness: 0.2, metalness: 0.8 });
+        const matBody = new THREE.MeshStandardMaterial({ color: 0x224422, metalness: 0.6, roughness: 0.3 });
         const matGlow = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        const matDark = new THREE.MeshStandardMaterial({ color: 0x050505 });
+        const matDark = new THREE.MeshStandardMaterial({ color: 0x050505, metalness: 0.9 });
 
-        let body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.8), matBody);
-        body.position.set(0, 0, -0.2);
+        let mainBody = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 1.0), matBody);
+        mainBody.position.set(0, 0, -0.1);
 
-        let nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.2, 16), matDark);
-        nozzle.rotation.x = Math.PI / 2; nozzle.position.set(0, 0, -0.6);
+        let barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.3, 16), matDark);
+        barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0, -0.7);
 
-        let core = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), matGlow);
-        core.position.set(0, 0, -0.5);
+        let coreSphere = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), matGlow);
+        coreSphere.position.set(0, 0, -0.6);
 
-        let grip = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.3, 0.2), matDark);
-        grip.position.set(0, -0.25, 0.1);
+        let sidePlateL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.8), matDark);
+        sidePlateL.position.set(-0.23, 0, -0.1);
+        let sidePlateR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.8), matDark);
+        sidePlateR.position.set(0.23, 0, -0.1);
 
-        weaponGroup.add(body, nozzle, core, grip);
-        weaponGroup.position.set(0.35, -0.4, -0.5);
+        let display = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.15), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+        display.rotation.x = -Math.PI / 4;
+        display.position.set(0, 0.26, 0.1);
+
+        weaponGroup.add(mainBody, barrel, coreSphere, sidePlateL, sidePlateR, display);
+        weaponGroup.position.set(0.35, -0.4, -0.4);
         weaponGroup.userData.defPos = weaponGroup.position.clone();
 
       } else if (wType === 'ssg') {
-        const matDark = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
-        const matMetal = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.3, metalness: 0.9 });
-        const matWood = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 1.0 });
+        const matMetal = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.9, roughness: 0.2 });
+        const matWood = new THREE.MeshStandardMaterial({ color: 0x2b1d0e, roughness: 1.0 });
 
-        let barrel1 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.7, 12), matMetal);
-        barrel1.rotation.x = Math.PI / 2; barrel1.position.set(-0.065, 0, -0.3);
+        let b1 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.8, 16), matMetal);
+        b1.rotation.x = Math.PI / 2; b1.position.set(-0.075, 0, -0.35);
+        let b2 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.8, 16), matMetal);
+        b2.rotation.x = Math.PI / 2; b2.position.set(0.075, 0, -0.35);
 
-        let barrel2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.7, 12), matMetal);
-        barrel2.rotation.x = Math.PI / 2; barrel2.position.set(0.065, 0, -0.3);
+        let breakAction = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.4), matMetal);
+        breakAction.position.set(0, -0.02, 0.05);
 
-        let body = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.18, 0.4), matDark);
-        body.position.set(0, -0.02, 0);
+        let woodForend = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.4), matWood);
+        woodForend.position.set(0, -0.1, -0.2);
 
-        let stock = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.25, 0.5), matWood);
-        stock.position.set(0, -0.1, 0.4);
+        let stock = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.3, 0.6), matWood);
+        stock.position.set(0, -0.15, 0.5);
 
-        weaponGroup.add(barrel1, barrel2, body, stock);
+        weaponGroup.add(b1, b2, breakAction, woodForend, stock);
         weaponGroup.position.set(0.3, -0.4, -0.5);
         weaponGroup.userData.defPos = weaponGroup.position.clone();
 
       } else if (wType === 'chainsaw') {
-        const matCasing = new THREE.MeshStandardMaterial({ color: 0xccaa00, roughness: 0.5 });
-        const matBlade = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9 });
+        const matYellow = new THREE.MeshStandardMaterial({ color: 0xffcc00, metalness: 0.4, roughness: 0.4 });
+        const matSteel = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9, roughness: 0.1 });
 
-        let body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.5), matCasing);
-        let blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.15, 0.8), matBlade);
-        blade.position.set(0, 0, -0.6);
+        let body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.6), matYellow);
+        let blade = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.2, 1.2), matSteel);
+        blade.position.set(0, 0, -0.8);
 
-        weaponGroup.add(body, blade);
-        weaponGroup.position.set(0.3, -0.5, -0.4);
+        let handleTop = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.02, 8, 24, Math.PI), matSteel);
+        handleTop.rotation.x = -Math.PI / 2;
+        handleTop.position.set(0, 0.2, 0);
+
+        let motor = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 12), matSteel);
+        motor.rotation.z = Math.PI / 2;
+        motor.position.set(0.2, 0, 0);
+
+        weaponGroup.add(body, blade, handleTop, motor);
+        weaponGroup.position.set(0.35, -0.5, -0.4);
         weaponGroup.userData.defPos = weaponGroup.position.clone();
 
       } else if (wType === 'rocket') {
-        const matGreen = new THREE.MeshStandardMaterial({ color: 0x224422, roughness: 0.6 });
-        const matDark = new THREE.MeshStandardMaterial({ color: 0x111111 });
+        const matOlive = new THREE.MeshStandardMaterial({ color: 0x445544, metalness: 0.3, roughness: 0.7 });
+        const matMetal = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 });
 
-        let tube = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.9, 16), matGreen);
+        let tube = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.2, 24), matOlive);
         tube.rotation.x = Math.PI / 2; tube.position.set(0, 0, -0.4);
 
-        let handle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.15), matDark);
-        handle.position.set(0, -0.25, -0.1);
+        let exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.12, 0.2, 24), matMetal);
+        exhaust.rotation.x = Math.PI / 2; exhaust.position.set(0, 0, 0.3);
 
-        weaponGroup.add(tube, handle);
-        weaponGroup.position.set(0.4, -0.4, -0.5);
+        let sightBox = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.15), matMetal);
+        sightBox.position.set(0.15, 0.1, -0.4);
+
+        let handle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.15), matMetal);
+        handle.position.set(0, -0.3, -0.1);
+
+        weaponGroup.add(tube, exhaust, sightBox, handle);
+        weaponGroup.position.set(0.4, -0.3, -0.4);
         weaponGroup.userData.defPos = weaponGroup.position.clone();
       }
     }
