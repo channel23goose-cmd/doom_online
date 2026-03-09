@@ -591,7 +591,8 @@
       shootRocket() { this.play(400, 'sawtooth', 0.3, 0.8, -200); },
       shootChainsaw() { this.play(50, 'sawtooth', 0.1, 0.2, Math.sin(Date.now() * 0.1) * 50); },
       pickupHealth() { this.play(400, 'sine', 0.3, 0.4, 400); this.play(600, 'sine', 0.4, 0.4, 600); },
-      pickupAmmo() { this.play(600, 'square', 0.1, 0.3, 0); this.play(800, 'square', 0.15, 0.3, 0); }
+      pickupAmmo() { this.play(600, 'square', 0.1, 0.3, 0); this.play(800, 'square', 0.15, 0.3, 0); },
+      portalOpen() { this.play(800, 'sine', 1.0, 0.6, -400); this.play(400, 'square', 0.8, 0.4, 200); }
     };
 
     // ═══════════════════════════════════════════
@@ -966,11 +967,16 @@
             // Rapid fire
             for (let i = 0; i < 3; i++) {
               setTimeout(() => {
-                if (this.state !== 'DEAD') projectiles.push(new Projectile(this.x, 2, this.z, dir.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.2, 0, (Math.random() - 0.5) * 0.2)).normalize()));
+                if (this.state !== 'DEAD') {
+                  projectiles.push(new Projectile(this.x, 2, this.z, dir.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.2, 0, (Math.random() - 0.5) * 0.2)).normalize()));
+                  sfx.play(400, 'sawtooth', 0.1, 0.3, -100);
+                }
               }, i * 200);
             }
           } else {
             projectiles.push(new Projectile(this.x, yOff, this.z, dir));
+            if (this.type === 'C') sfx.play(900, 'sine', 0.2, 0.4, -600);
+            else sfx.play(400, 'sawtooth', 0.2, 0.4, -200);
           }
           // Attack animation
           if (this.armL) this.armL.rotation.x = -Math.PI / 3;
@@ -1988,7 +1994,7 @@
       pl.position.set(exitZone.x, 2, exitZone.z);
       geometryGroup.add(pl);
       logAction("ПОРТАЛ ОТКРЫТ! УХОДИ!", "#00ffff");
-      sfx.play(800, 'sine', 0.8, 0.5, 200);
+      sfx.portalOpen();
     }
 
     // ═══════════════════════════════════════════
