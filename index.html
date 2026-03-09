@@ -1100,44 +1100,51 @@
 
     // ── Build Level ──
     function generateRandomLevel(idx) {
-      let size = Math.min(10 + idx * 2, 40); // map gets bigger
+      let size = Math.min(12 + idx * 2, 40);
       let map = [];
       for (let r = 0; r < size; r++) { map.push(new Array(size).fill('#')); }
 
-      // Simple room carving
-      let cx = 2, cz = 2; // Move in slightly from edge
-      map[cz][cx] = 'P'; // Start position
+      // Drunken Walker connectivity guarantee
+      let px = Math.floor(size / 2), pz = Math.floor(size / 2);
+      map[pz][px] = 'P';
 
-      // Carve a starting room
-      for (let r = 1; r < 4; r++) {
-        for (let c = 1; c < 4; c++) {
-          map[r][c] = '.';
+      let walkerX = px, walkerZ = pz;
+      let carvedCount = 0;
+      let targetCarve = (size * size) * 0.4; // 40% open space
+
+      while (carvedCount < targetCarve) {
+        let dir = Math.floor(Math.random() * 4);
+        if (dir === 0) walkerX++;
+        else if (dir === 1) walkerX--;
+        else if (dir === 2) walkerZ++;
+        else if (dir === 3) walkerZ--;
+
+        // Clamp inside border
+        walkerX = Math.max(1, Math.min(size - 2, walkerX));
+        walkerZ = Math.max(1, Math.min(size - 2, walkerZ));
+
+        if (map[walkerZ][walkerX] === '#') {
+          map[walkerZ][walkerX] = '.';
+          carvedCount++;
         }
       }
-      map[cz][cx] = 'P';
 
-      for (let i = 0; i < size * 3; i++) {
-        let w = 3 + Math.floor(Math.random() * 4);
-        let h = 3 + Math.floor(Math.random() * 4);
-        let rx = 1 + Math.floor(Math.random() * (size - w - 2));
-        let rz = 1 + Math.floor(Math.random() * (size - h - 2));
-        for (let rr = rz; rr < rz + h; rr++) {
-          for (let cc = rx; cc < rx + w; cc++) {
-            map[rr][cc] = '.';
+      // Re-ensure 'P'
+      map[pz][px] = 'P';
+
+      // Place exit at the furthest reachable point (or just a far corner)
+      let exitPlaced = false;
+      for (let r = size - 2; r > 1; r--) {
+        for (let c = size - 2; c > 1; c--) {
+          if (map[r][c] === '.') {
+            map[r][c] = 'X';
+            exitPlaced = true;
+            break;
           }
         }
-        // Path to (1,1)
-        for (let step = 1; step <= Math.max(rx, rz); step++) {
-          if (rx - step > 0) map[rz][rx - step] = '.';
-          if (rz - step > 0) map[rz - step][1] = '.';
-        }
+        if (exitPlaced) break;
       }
-
-      // Place exit far away
-      map[size - 2][size - 2] = 'X';
-      map[size - 2][size - 3] = '.';
-      map[size - 3][size - 2] = '.';
-      map[size - 3][size - 3] = '.';
+      if (!exitPlaced) map[size - 2][size - 2] = 'X'; // Fallback
 
       // Populate enemies and items
       let openSpaces = [];
@@ -1711,10 +1718,17 @@
 
     // Grid-based wall check
     function isWallGrid(x, z) {
-      let col = Math.round(x / TS);
-      let row = Math.round(z / TS);
-      if (row < 0 || row >= mapGrid.length || col < 0 || col >= mapGrid[0].length) return true;
-      return mapGrid[row][col] === '#';
+      const radius = 0.3;
+      // Check a small bounding box/circle around the point
+      for (let ox = -radius; ox <= radius; ox += radius * 2) {
+        for (let oz = -radius; oz <= radius; oz += radius * 2) {
+          let col = Math.round((x + ox) / TS);
+          let row = Math.round((z + oz) / TS);
+          if (row < 0 || row >= mapGrid.length || col < 0 || col >= mapGrid[0].length) return true;
+          if (mapGrid[row][col] === '#') return true;
+        }
+      }
+      return false;
     }
 
     // Line of Sight (Bresenham-style ray step)
