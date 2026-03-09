@@ -1226,6 +1226,12 @@
           let beam = new THREE.Mesh(new THREE.BoxGeometry(TS, 0.3, 0.3), MAT_WALL);
           beam.position.set(x, WALL_H - 0.15, z);
           parent.add(beam);
+        } else if (type === 'panel') {
+          let panel = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 0.05), new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2, bumpMap: noiseTex }));
+          panel.position.set(x + (Math.random() - 0.5) * 2, y, z + 2.01);
+          parent.add(panel);
+          let p2 = panel.clone(); p2.position.z -= 4.02;
+          parent.add(p2);
         }
       }
 
@@ -1270,6 +1276,7 @@
             geometryGroup.add(m);
             if (Math.random() > 0.5) addWorldDetail(geometryGroup, 'rivets', cx, WALL_H / 2, cz);
             if (Math.random() > 0.7) addWorldDetail(geometryGroup, 'cable', cx, WALL_H / 2, cz);
+            if (Math.random() > 0.8) addWorldDetail(geometryGroup, 'panel', cx, WALL_H / 2, cz);
           } else {
             // Floor & Ceiling for open spaces
             let f = new THREE.Mesh(geoFloor, MAT_FLOOR);
